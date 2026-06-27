@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#166534">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Golf Scores">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="app-header">
+      <div>
+        <div class="eyebrow">Golf</div>
+        <h1>Scorecard</h1>
+      </div>
+      <div id="roundBadge" class="round-badge hidden"></div>
+    </header>
+
+    <main>
+      <section id="homeView" class="view">
+        <div class="hero-card">
+          <h2>Live golf scoring</h2>
+          <p>Host an outing, join a team, or check the leaderboard.</p>
+        </div>
+
+        <button id="installAppButton" class="secondary hidden" onclick="installApp()">Install App</button>
+        <button id="resumeScoringButton" class="hidden" onclick="resumeSavedScoring()">Resume Scoring</button>
+        <button onclick="showHostPin()">Host Round</button>
+        <button class="secondary" onclick="showJoinRound()">Join Round</button>
+        <button class="secondary" onclick="showLeaderboardLookup()">View Leaderboard</button>
+        <button class="secondary" onclick="showAdminPin()">Admin</button>
+        <div class="app-version">Version 0.2.0</div>
+      </section>
+
+      <section id="hostPinView" class="view hidden">
+        <button class="link-button" onclick="showHome()">← Home</button>
+        <h2>Host PIN</h2>
+        <p class="muted">Hosting is protected so guests do not create rounds by mistake.</p>
+        <input id="hostPin" type="password" inputmode="numeric" placeholder="Host PIN">
+        <button onclick="verifyHostPinAndContinue()">Continue</button>
+      </section>
+
+      <section id="hostSetupView" class="view hidden">
+        <button class="link-button" onclick="showHome()">← Home</button>
+        <h2>Host Round</h2>
+
+        <label>Round Name</label>
+        <input id="roundName" placeholder="Harv Willett Outing">
+
+        <label>Course</label>
+        <input id="course" placeholder="Optional">
+
+        <label>Holes</label>
+        <select id="holes">
+          <option value="18">18 holes</option>
+          <option value="9">9 holes</option>
+        </select>
+
+        <label>Game Style</label>
+        <select id="gameStyle" onchange="renderHostFields()">
+          <option value="scramble">Scramble</option>
+          <option value="standard">Standard</option>
+        </select>
+
+        <div id="hostFields"></div>
+
+        <button onclick="createHostedRoundFromSetup(event)">Create Round</button>
+      </section>
+
+      <section id="roundCreatedView" class="view hidden">
+        <h2>Round Created</h2>
+        <div class="join-code-card">
+          <div class="muted">Join Code</div>
+          <div id="createdJoinCode" class="join-code"></div>
+          <button class="small secondary share-inline" onclick="shareCurrentRoundJoin()">Share Join Code</button>
+        </div>
+        <p class="muted">Share the join code with everyone. Share each team PIN only with that team.</p>
+        <div id="createdPinList"></div>
+        <button onclick="showJoinRoundWithCode()">Join This Round</button>
+        <button class="secondary" onclick="showLeaderboard()">View Leaderboard</button>
+        <button class="secondary" onclick="showHome()">Home</button>
+      </section>
+
+      <section id="joinRoundView" class="view hidden">
+        <button class="link-button" onclick="showHome()">← Home</button>
+        <h2>Join Round</h2>
+        <label>Join Code</label>
+        <input id="joinCode" inputmode="numeric" placeholder="6-digit code">
+        <button onclick="loadRoundForJoin()">Find Round</button>
+      </section>
+
+      <section id="chooseTeamView" class="view hidden">
+        <button class="link-button" onclick="showJoinRound()">← Join Code</button>
+        <h2>Choose Your Team</h2>
+        <div id="teamChoices"></div>
+      </section>
+
+      <section id="teamPinView" class="view hidden">
+        <button class="link-button" onclick="showView('chooseTeamView')">← Choose Team</button>
+        <h2 id="teamPinTitle">Team PIN</h2>
+        <p class="muted">Enter the PIN assigned by the host.</p>
+        <input id="teamPin" type="password" inputmode="numeric" placeholder="4-digit PIN">
+        <button onclick="verifySelectedTeamPin()">Start Scoring</button>
+      </section>
+
+      <section id="scoreView" class="view hidden score-view-padding">
+        <div class="score-title-row">
+          <button class="hole-nav" onclick="previousHole()">‹</button>
+          <div>
+            <div class="muted center">Scoring</div>
+            <h2 id="holeTitle">Hole 1</h2>
+          </div>
+          <button class="hole-nav" onclick="nextHole()">›</button>
+        </div>
+
+        <div id="scoreInputs"></div>
+      </section>
+
+      <section id="leaderboardLookupView" class="view hidden">
+        <button class="link-button" onclick="showHome()">← Home</button>
+        <h2>Leaderboard</h2>
+        <label>Join Code</label>
+        <input id="leaderboardJoinCode" inputmode="numeric" placeholder="6-digit code">
+        <button onclick="loadRoundForLeaderboard()">View Leaderboard</button>
+      </section>
+
+      <section id="leaderboardView" class="view hidden nav-padding">
+        <h2>Leaderboard</h2>
+        <div id="leaderboardMeta" class="muted"></div>
+        <button class="secondary" onclick="refreshCurrentRound()">Refresh</button>
+        <div id="leaderboard"></div>
+      </section>
+
+      <section id="adminPinView" class="view hidden">
+        <button class="link-button" onclick="showHome()">← Home</button>
+        <h2>Admin</h2>
+        <p class="muted">Admin tools are protected separately from hosting.</p>
+        <label>Admin PIN</label>
+        <input id="adminPin" type="password" inputmode="numeric" placeholder="Admin PIN">
+        <button onclick="verifyAdminPin()">Open Admin</button>
+      </section>
+
+      <section id="adminView" class="view hidden">
+        <button class="link-button" onclick="showHome()">← Home</button>
+        <h2>Admin</h2>
+
+        <div class="card admin-section">
+          <h3>View Round PINs</h3>
+          <p class="muted">Choose a round to view the join code and team/player PINs. No typing needed.</p>
+          <label>Select Round</label>
+          <select id="adminRoundSelect" onchange="loadSelectedAdminRound()">
+            <option value="">Loading rounds...</option>
+          </select>
+          <button class="secondary" onclick="loadAdminRoundList()">Refresh Round List</button>
+        </div>
+
+        <div id="adminContent"></div>
+
+        <div class="card admin-section">
+          <h3>Example Workflow</h3>
+          <ol class="workflow-list">
+            <li>Tap <strong>Host Round</strong> and enter the host PIN.</li>
+            <li>Create the round with the course, game style, holes, teams, and players.</li>
+            <li>After creation, write down or copy the <strong>Join Code</strong>.</li>
+            <li>Send the Join Code to everyone playing.</li>
+            <li>Send each team only their own <strong>team PIN</strong>.</li>
+            <li>Each team taps <strong>Join Round</strong>, enters the Join Code, chooses their team, and enters their team PIN.</li>
+            <li>Teams enter their own scores during the round.</li>
+            <li>Anyone can tap <strong>View Leaderboard</strong> and enter the Join Code to follow the live standings.</li>
+            <li>Use this Admin page to view PINs again, reset a team PIN, lock scoring, reopen scoring, or delete a test round.</li>
+          </ol>
+        </div>
+      </section>
+    </main>
+
+    <nav id="bottomNav" class="bottom-nav hidden">
+      <button onclick="showScore()">Score</button>
+      <button onclick="showLeaderboard()">Leaderboard</button>
+      <button onclick="showHome()">Home</button>
+    </nav>
+
+    <div id="appModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <div class="modal-card">
+        <h3 id="modalTitle">Notice</h3>
+        <p id="modalMessage"></p>
+        <button id="modalOkButton" onclick="closeModal()">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
