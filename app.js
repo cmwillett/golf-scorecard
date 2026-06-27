@@ -1,7 +1,7 @@
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbw1lDOVpkmxmHbg71TQycQw4ZZBfxpNBuv5UDGK_vQ6-kiGco2XIMYjfye6WGBMdu7r2w/exec';
 const FRONTEND_APP_URL = 'https://cmwillett.github.io/golf-scorecard/';
-const FRONTEND_VERSION = '0.2.2';
+const FRONTEND_VERSION = '0.2.3';
 
 function apiCall(action, args = []) {
   if (!API_URL || API_URL.includes('PASTE_APPS_SCRIPT')) {
@@ -1016,6 +1016,7 @@ createGoogleScriptRunShim();
         <h3>${escapeHtml(round.roundName || 'Round')}</h3>
         <p class="muted">Code ${escapeHtml(round.joinCode)} • ${escapeHtml(round.gameStyle)} • ${round.holes} holes • ${escapeHtml(round.status)}</p>
         <div class="share-action-row">
+          <button class="small secondary share-inline" onclick="adminViewLeaderboard()">View Leaderboard</button>
           <button class="small secondary share-inline" onclick="shareAdminRoundJoin()">Share Join Code</button>
           <button class="small secondary share-inline" onclick="shareAdminResults()">Share Results</button>
         </div>
@@ -1035,12 +1036,48 @@ createGoogleScriptRunShim();
           </div>
           <div class="pin-actions">
             <div class="pin-code">${escapeHtml(entry.scoringPin || '')}</div>
+            <button class="small secondary" onclick="adminScoreAsEntry('${entry.entryId}')">Score</button>
             <button class="small secondary share-button" onclick="shareAdminEntry('${entry.entryId}')">Share</button>
             <button class="small secondary" onclick="adminResetPin('${entry.entryId}')">Reset PIN</button>
           </div>
         </div>
       `).join('')}
     `;
+  }
+
+
+  function adminViewLeaderboard() {
+    if (!lastAdminRound) {
+      showModal('Choose a round first.');
+      return;
+    }
+
+    currentRound = lastAdminRound;
+    selectedEntryId = '';
+    selectedEntryName = '';
+    selectedEntryPin = '';
+    showLeaderboard();
+  }
+
+  function adminScoreAsEntry(entryId) {
+    if (!lastAdminRound) {
+      showModal('Choose a round first.');
+      return;
+    }
+
+    const entry = (lastAdminRound.entries || []).find(e => e.entryId === entryId);
+    if (!entry) {
+      showModal('Team/player not found.');
+      return;
+    }
+
+    currentRound = lastAdminRound;
+    selectedEntryId = entry.entryId;
+    selectedEntryName = entry.entryName;
+    selectedEntryPin = entry.scoringPin || '';
+    currentHole = 1;
+    saveLastAppState('scoreView');
+    showScore();
   }
 
   function adminFinishRound() {
