@@ -1,7 +1,7 @@
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbw1lDOVpkmxmHbg71TQycQw4ZZBfxpNBuv5UDGK_vQ6-kiGco2XIMYjfye6WGBMdu7r2w/exec';
 const FRONTEND_APP_URL = 'https://cmwillett.github.io/golf-scorecard/';
-const FRONTEND_VERSION = '0.2.3';
+const FRONTEND_VERSION = '0.2.4';
 
 function apiCall(action, args = []) {
   if (!API_URL || API_URL.includes('PASTE_APPS_SCRIPT')) {
@@ -103,6 +103,7 @@ createGoogleScriptRunShim();
   let scoreSaveToken = 0;
   let lastAdminRound = null;
   let deferredInstallPrompt = null;
+  let installReminderShown = false;
 
   const SCORING_SESSION_KEY = 'golfScorecardScoringSessionV1';
   const APP_STATE_KEY = 'golfScorecardLastStateV1';
@@ -115,6 +116,7 @@ createGoogleScriptRunShim();
     wireButtonPressFeedback();
     registerPwaServiceWorker();
     wireInstallPrompt();
+    scheduleInstallReminder();
 
     if (!handleInitialJoinLink()) {
       restoreLastAppState();
@@ -134,22 +136,78 @@ createGoogleScriptRunShim();
     }
   }
 
+  function isPwaInstalledMode() {
+    return window.matchMedia('(display-mode: standalone)').matches ||
+      window.matchMedia('(display-mode: fullscreen)').matches ||
+      window.navigator.standalone === true;
+  }
+
   function wireInstallPrompt() {
     const installButton = document.getElementById('installAppButton');
+    if (isPwaInstalledMode()) {
+      if (installButton) installButton.classList.add('hidden');
+      return;
+    }
+
+    if (installButton) installButton.classList.remove('hidden');
+
     window.addEventListener('beforeinstallprompt', event => {
       event.preventDefault();
       deferredInstallPrompt = event;
       if (installButton) installButton.classList.remove('hidden');
+      showInstallReminder();
     });
 
     window.addEventListener('appinstalled', () => {
       deferredInstallPrompt = null;
+      installReminderShown = true;
       if (installButton) installButton.classList.add('hidden');
       showModal('The app was installed successfully.', 'Installed');
     });
   }
 
+  function scheduleInstallReminder() {
+    if (isPwaInstalledMode()) return;
+    setTimeout(() => {
+      if (!isPwaInstalledMode()) showInstallReminder();
+    }, 900);
+  }
+
+  function showInstallReminder() {
+    if (isPwaInstalledMode() || installReminderShown) return;
+    installReminderShown = true;
+
+    const message = deferredInstallPrompt
+      ? 'For the best golf scoring experience, install this app on your device. It will open like a regular app and work better during the round.'
+      : 'For the best golf scoring experience, install this app on your device. If the Install button does not appear, use your browser menu and choose “Install app” or “Add to Home screen.”';
+
+    showModal(message, 'Install Golf Scorecard');
+    const okButton = document.getElementById('modalOkButton');
+    if (okButton) {
+      okButton.textContent = deferredInstallPrompt ? 'Install App' : 'Got it';
+      okButton.onclick = () => {
+        closeModal();
+        if (deferredInstallPrompt) installApp();
+      };
+    }
+
+    let cancelButton = document.getElementById('modalCancelButton');
+    if (!cancelButton) {
+      cancelButton = document.createElement('button');
+      cancelButton.id = 'modalCancelButton';
+      cancelButton.className = 'secondary';
+      cancelButton.textContent = 'Not now';
+      okButton && okButton.parentNode.insertBefore(cancelButton, okButton);
+    }
+    cancelButton.onclick = closeModal;
+  }
+
   async function installApp() {
+    if (isPwaInstalledMode()) {
+      showModal('The app is already installed.', 'Installed');
+      return;
+    }
+
     if (!deferredInstallPrompt) {
       showModal('Use your browser menu and choose “Add to Home screen” or “Install app.”', 'Install App');
       return;
