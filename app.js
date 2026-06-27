@@ -1,6 +1,7 @@
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbw1lDOVpkmxmHbg71TQycQw4ZZBfxpNBuv5UDGK_vQ6-kiGco2XIMYjfye6WGBMdu7r2w/exec';
 const FRONTEND_APP_URL = 'https://cmwillett.github.io/golf-scorecard/';
+const FRONTEND_VERSION = '0.2.1';
 
 function apiCall(action, args = []) {
   if (!API_URL || API_URL.includes('PASTE_APPS_SCRIPT')) {
@@ -108,7 +109,10 @@ createGoogleScriptRunShim();
     wireButtonPressFeedback();
     registerPwaServiceWorker();
     wireInstallPrompt();
-    restoreLastAppState();
+
+    if (!handleInitialJoinLink()) {
+      restoreLastAppState();
+    }
   });
 
 
@@ -1103,11 +1107,11 @@ createGoogleScriptRunShim();
 
 
   function getShareAppUrl(round) {
-    const frontendUrl = String(typeof FRONTEND_APP_URL !== 'undefined' ? FRONTEND_APP_URL : '').trim();
-    if (frontendUrl) return frontendUrl;
-
     const configuredUrl = String(round?.appUrl || '').trim();
     if (configuredUrl) return configuredUrl;
+
+    const frontendUrl = String(typeof FRONTEND_APP_URL !== 'undefined' ? FRONTEND_APP_URL : '').trim();
+    if (frontendUrl) return frontendUrl;
 
     try {
       return window.location.href.split('?')[0];
@@ -1116,20 +1120,126 @@ createGoogleScriptRunShim();
     }
   }
 
+  function getJoinUrl(round) {
+    const code = String(round?.joinCode || '').trim();
+    const base = getShareAppUrl(round) || FRONTEND_APP_URL || window.location.href.split('?')[0];
+
+    try {
+      const url = new URL(base, window.location.href);
+      url.searchParams.set('join', code);
+      return url.toString();
+    } catch (err) {
+      const separator = base.includes('?') ? '&' : '?';
+      return `${base}${separator}join=${encodeURIComponent(code)}`;
+    }
+  }
+
+  function handleInitialJoinLink() {
+    let joinCode = '';
+    try {
+      const params = new URLSearchParams(window.location.search || '');
+      joinCode = (params.get('join') || params.get('code') || '').trim();
+    } catch (err) {
+      joinCode = '';
+    }
+
+    if (!joinCode) return false;
+
+    const joinInput = document.getElementById('joinCode');
+    if (joinInput) joinInput.value = joinCode;
+    showJoinRound();
+
+    loadRoundByCode(joinCode, round => {
+      currentRound = round;
+      renderTeamChoices();
+      showView('chooseTeamView');
+    });
+
+    return true;
+  }
+
+  let qrRoundForShare = null;
+
+  function openQrModal(round) {
+    if (!round || !round.joinCode) {
+      showModal('No round is loaded yet.', 'QR Code');
+      return;
+    }
+
+    qrRoundForShare = round;
+    const joinUrl = getJoinUrl(round);
+    const modal = document.getElementById('qrModal');
+    const img = document.getElementById('qrImage');
+    const link = document.getElementById('qrJoinLink');
+    const title = document.getElementById('qrModalTitle');
+
+    if (title) title.textContent = `${round.roundName || 'Round'} QR Code`;
+    if (img) img.src = `https://api.qrserver.com/v1/create-qr-code/?size=280x280&margin=10&data=${encodeURIComponent(joinUrl)}`;
+    if (link) link.textContent = joinUrl;
+    if (modal) modal.classList.remove('hidden');
+  }
+
+  function closeQrModal() {
+    const modal = document.getElementById('qrModal');
+    if (modal) modal.classList.add('hidden');
+  }
+
+  function showCurrentRoundQr() {
+    openQrModal(currentRound);
+  }
+
+  function showAdminRoundQr() {
+    openQrModal(lastAdminRound);
+  }
+
+  function shareQrJoinLink() {
+    if (!qrRoundForShare) return;
+    shareText(qrRoundForShare.roundName || 'Golf Round', getRoundShareMessage(qrRoundForShare));
+  }
+
+  function copyQrJoinLink() {
+    if (!qrRoundForShare) return;
+    copyShareText(getJoinUrl(qrRoundForShare));
+  }
+
   function getRoundShareMessage(round) {
     const name = round?.roundName || 'Golf Round';
     const code = round?.joinCode || '';
-    const appUrl = getShareAppUrl(round);
-    return `🏌️ ${name}\n\nJoin our live golf round!\n\nApp:\n${appUrl}\n\nJoin Code:\n${code}\n\nOpen the app, tap "Join Round", and enter the join code above.`;
+    const joinUrl = getJoinUrl(round);
+    return `🏌️ ${name}
+
+Join our live golf round!
+
+Join Link:
+${joinUrl}
+
+Join Code:
+${code}
+
+Open the link and the join code will be filled in automatically. Tap "Install App" if you see it. If you do not see Install App, use your browser menu and choose Install app or Add to Home screen.`;
   }
 
   function getEntryShareMessage(round, entry) {
     const name = round?.roundName || 'Golf Round';
     const code = round?.joinCode || '';
-    const appUrl = getShareAppUrl(round);
+    const joinUrl = getJoinUrl(round);
     const entryName = entry?.entryName || 'Your Team';
     const pin = entry?.scoringPin || '';
-    return `🏌️ ${name}\n\nYou're scoring for:\n${entryName}\n\nApp:\n${appUrl}\n\nJoin Code:\n${code}\n\nTeam PIN:\n${pin}\n\nOpen the app, tap "Join Round", enter the join code, choose your team, then enter your Team PIN.`;
+    return `🏌️ ${name}
+
+You're scoring for:
+${entryName}
+
+Join Link:
+${joinUrl}
+
+Join Code:
+${code}
+
+Team PIN:
+${pin}
+
+Open the link, choose your team, and enter your Team PIN. Tap "Install App" if you see it. If you do not see Install App, use your browser menu and choose Install app or Add to Home screen.`;
   }
 
   function isProbablyMobileDevice() {

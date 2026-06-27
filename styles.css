@@ -698,3 +698,29 @@
       font-size: 38px;
     }
   }
+  .qr-card {
+    text-align: center;
+  }
+
+  .qr-image {
+    width: 260px;
+    max-width: 100%;
+    height: auto;
+    display: block;
+    margin: 14px auto;
+    border-radius: 16px;
+    border: 1px solid var(--border);
+    background: white;
+    padding: 8px;
+  }
+
+  .qr-link {
+    margin: 10px 0 14px;
+    padding: 10px;
+    border-radius: 12px;
+    background: #f8fafc;
+    color: var(--muted);
+    font-size: 13px;
+    overflow-wrap: anywhere;
+    text-align: left;
+  }
