@@ -33,7 +33,7 @@
         <button class="secondary" onclick="showJoinRound()">Join Round</button>
         <button class="secondary" onclick="showLeaderboardLookup()">View Leaderboard</button>
         <button class="secondary" onclick="showAdminPin()">Admin</button>
-        <div class="app-version">Version 0.2.0</div>
+        <div class="app-version" id="appVersionLabel">Frontend v0.2.2</div>
       </section>
 
       <section id="hostPinView" class="view hidden">
@@ -132,7 +132,10 @@
       <section id="leaderboardView" class="view hidden nav-padding">
         <h2>Leaderboard</h2>
         <div id="leaderboardMeta" class="muted"></div>
-        <button class="secondary" onclick="refreshCurrentRound()">Refresh</button>
+        <div class="button-row">
+          <button class="secondary" onclick="refreshCurrentRound()">Refresh</button>
+          <button class="secondary" onclick="shareCurrentResults()">Share Results</button>
+        </div>
         <div id="leaderboard"></div>
       </section>
 
@@ -160,6 +163,12 @@
         </div>
 
         <div id="adminContent"></div>
+
+        <div class="card admin-section danger-zone">
+          <h3>Reset App Data</h3>
+          <p class="muted">Clear all rounds, teams/players, and scores. App settings like PINs and AppUrl are kept.</p>
+          <button class="danger" onclick="adminResetAllData()">Clear All Rounds and Scores</button>
+        </div>
 
         <div class="card admin-section">
           <h3>Example Workflow</h3>

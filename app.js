@@ -1,7 +1,7 @@
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbw1lDOVpkmxmHbg71TQycQw4ZZBfxpNBuv5UDGK_vQ6-kiGco2XIMYjfye6WGBMdu7r2w/exec';
 const FRONTEND_APP_URL = 'https://cmwillett.github.io/golf-scorecard/';
-const FRONTEND_VERSION = '0.2.1';
+const FRONTEND_VERSION = '0.2.2';
 
 function apiCall(action, args = []) {
   if (!API_URL || API_URL.includes('PASTE_APPS_SCRIPT')) {
@@ -85,6 +85,11 @@ function createGoogleScriptRunShim() {
 createGoogleScriptRunShim();
 
 
+  function updateDisplayedVersion() {
+    const el = document.getElementById('appVersionLabel');
+    if (el) el.textContent = `Frontend v${FRONTEND_VERSION}`;
+  }
+
   let hostPinValue = '';
   let adminPinValue = '';
   let currentRound = null;
@@ -103,6 +108,7 @@ createGoogleScriptRunShim();
   const APP_STATE_KEY = 'golfScorecardLastStateV1';
 
   document.addEventListener('DOMContentLoaded', () => {
+    updateDisplayedVersion();
     renderHostFields();
     updateResumeButton();
     validateSavedScoringSession();
@@ -1009,7 +1015,10 @@ createGoogleScriptRunShim();
       <div class="card">
         <h3>${escapeHtml(round.roundName || 'Round')}</h3>
         <p class="muted">Code ${escapeHtml(round.joinCode)} • ${escapeHtml(round.gameStyle)} • ${round.holes} holes • ${escapeHtml(round.status)}</p>
-        <button class="small secondary share-inline" onclick="shareAdminRoundJoin()">Share Join Code</button>
+        <div class="share-action-row">
+          <button class="small secondary share-inline" onclick="shareAdminRoundJoin()">Share Join Code</button>
+          <button class="small secondary share-inline" onclick="shareAdminResults()">Share Results</button>
+        </div>
         <div class="admin-actions">
           ${isActive
             ? '<button onclick="adminFinishRound()">Finish / Lock Scoring</button>'
@@ -1103,6 +1112,26 @@ createGoogleScriptRunShim();
           roundId: lastAdminRound.roundId
         });
     }, 'Delete Round');
+  }
+
+
+  function adminResetAllData() {
+    showConfirmModal('Clear ALL rounds, teams/players, and scores? AppSettings will be kept. This cannot be undone.', () => {
+      google.script.run
+        .withSuccessHandler(() => {
+          localStorage.removeItem(SCORING_SESSION_KEY);
+          clearLastAppState();
+          currentRound = null;
+          lastAdminRound = null;
+          updateResumeButton();
+          const content = document.getElementById('adminContent');
+          if (content) content.innerHTML = '';
+          loadAdminRoundList();
+          showModal('All rounds, teams/players, and scores have been cleared.', 'Reset Complete');
+        })
+        .withFailureHandler(err => showModal(err.message || err, 'Reset Failed'))
+        .resetAllData(adminPinValue);
+    }, 'Reset All Data');
   }
 
 
@@ -1200,6 +1229,31 @@ createGoogleScriptRunShim();
   function copyQrJoinLink() {
     if (!qrRoundForShare) return;
     copyShareText(getJoinUrl(qrRoundForShare));
+  }
+
+
+  function getResultsShareMessage(round) {
+    if (!round) return '';
+
+    const appUrl = getJoinUrl(round) || getShareAppUrl(round) || FRONTEND_APP_URL;
+    const rows = (round.entries || []).map(entry => {
+      const scoreMap = round.scores?.[entry.entryId] || {};
+      const total = Object.values(scoreMap).reduce((sum, value) => sum + (Number(value) || 0), 0);
+      const through = Object.values(scoreMap).filter(value => value !== '' && value !== null && typeof value !== 'undefined').length;
+      return { entry, total, through };
+    }).sort((a, b) => {
+      if (a.through === 0 && b.through !== 0) return 1;
+      if (b.through === 0 && a.through !== 0) return -1;
+      return a.total - b.total;
+    });
+
+    const title = round.status === 'Final' ? 'Final Results' : 'Live Results';
+    const resultLines = rows.map((row, index) => {
+      const score = row.through ? row.total : '-';
+      return `${index + 1}. ${row.entry.entryName} — ${score} (Through ${row.through})`;
+    }).join('\n');
+
+    return `🏌️ ${round.roundName || 'Golf Round'} ${title}\n\nJoin Code: ${round.joinCode}\nStatus: ${round.status || ''}\n\n${resultLines}\n\nView the leaderboard:\n${appUrl}`;
   }
 
   function getRoundShareMessage(round) {
@@ -1300,6 +1354,23 @@ Open the link, choose your team, and enter your Team PIN. Tap "Install App" if y
     }
 
     await copyShareText(text);
+  }
+
+
+  function shareCurrentResults() {
+    if (!currentRound) {
+      showModal('No round is loaded yet.', 'Share Results');
+      return;
+    }
+    shareText(`${currentRound.roundName || 'Golf Round'} Results`, getResultsShareMessage(currentRound));
+  }
+
+  function shareAdminResults() {
+    if (!lastAdminRound) {
+      showModal('Choose a round first.', 'Share Results');
+      return;
+    }
+    shareText(`${lastAdminRound.roundName || 'Golf Round'} Results`, getResultsShareMessage(lastAdminRound));
   }
 
   function shareCurrentRoundJoin() {

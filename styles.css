@@ -724,3 +724,27 @@
     overflow-wrap: anywhere;
     text-align: left;
   }
+
+  .button-row,
+  .share-action-row {
+    display: flex;
+    gap: 10px;
+    align-items: stretch;
+  }
+
+  .button-row button,
+  .share-action-row button {
+    flex: 1;
+  }
+
+  .danger-zone {
+    border: 1px solid #fecaca;
+    background: #fffafa;
+  }
+
+  @media (max-width: 640px) {
+    .button-row,
+    .share-action-row {
+      gap: 8px;
+    }
+  }
