@@ -1,7 +1,7 @@
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbw1lDOVpkmxmHbg71TQycQw4ZZBfxpNBuv5UDGK_vQ6-kiGco2XIMYjfye6WGBMdu7r2w/exec';
 const FRONTEND_APP_URL = 'https://cmwillett.github.io/golf-scorecard/';
-const FRONTEND_VERSION = '0.2.6';
+const FRONTEND_VERSION = '0.2.7';
 
 function apiCall(action, args = []) {
   if (!API_URL || API_URL.includes('PASTE_APPS_SCRIPT')) {
@@ -1056,6 +1056,7 @@ createGoogleScriptRunShim();
         }
         lastAdminRound = round;
         renderAdminRound(round);
+        adminViewScoreAudit(true);
       })
       .withFailureHandler(err => showModal(err.message || err))
       .getAdminRound(roundId, adminPinValue);
@@ -1077,7 +1078,6 @@ createGoogleScriptRunShim();
           <button class="small secondary share-inline" onclick="adminViewLeaderboard()">View Leaderboard</button>
           <button class="small secondary share-inline" onclick="shareAdminRoundJoin()">Share Join Code</button>
           <button class="small secondary share-inline" onclick="shareAdminResults()">Share Results</button>
-          <button class="small secondary share-inline" onclick="adminViewScoreAudit()">Recent Edits</button>
         </div>
         <div class="admin-actions">
           ${isActive
@@ -1119,21 +1119,42 @@ createGoogleScriptRunShim();
     showLeaderboard();
   }
 
-  function adminViewScoreAudit() {
+  function adminViewScoreAudit(silent = false) {
     if (!lastAdminRound) {
-      showModal('Choose a round first.');
+      if (!silent) showModal('Choose a round first.');
       return;
     }
 
     const container = document.getElementById('adminAuditContent');
-    if (container) container.innerHTML = '<div class="muted">Loading recent score edits...</div>';
+    if (container) {
+      container.innerHTML = `
+        <div class="card audit-card">
+          <h3>Score Audit</h3>
+          <p class="muted">Loading recent score edits...</p>
+        </div>
+      `;
+    }
 
     google.script.run
       .withSuccessHandler(items => {
         renderAdminScoreAudit(items || []);
       })
-      .withFailureHandler(err => showModal(err.message || err, 'Could Not Load Edits'))
-      .getScoreAudit(lastAdminRound.roundId, adminPinValue, 50);
+      .withFailureHandler(err => {
+        if (silent) {
+          const box = document.getElementById('adminAuditContent');
+          if (box) {
+            box.innerHTML = `
+              <div class="card audit-card">
+                <h3>Score Audit</h3>
+                <p class="muted">Could not load edits.</p>
+              </div>
+            `;
+          }
+        } else {
+          showModal(err.message || err, 'Could Not Load Edits');
+        }
+      })
+      .getScoreAudit(lastAdminRound.roundId, adminPinValue, 75);
   }
 
   function renderAdminScoreAudit(items) {
@@ -1157,17 +1178,28 @@ createGoogleScriptRunShim();
 
     container.innerHTML = `
       <div class="card audit-card">
-        <h3>Recent Score Edits</h3>
-        <p class="muted">Shows the latest score changes for this round.</p>
-        ${items.map(item => `
-          <div class="audit-row">
-            <div>
-              <strong>${escapeHtml(item.entryName || 'Team/Player')}</strong>
-              <div class="entry-sub">Hole ${escapeHtml(String(item.hole))} • ${escapeHtml(item.timestamp || '')}</div>
-            </div>
-            <div class="audit-change">${formatAuditScore(item.oldScore)} → ${formatAuditScore(item.newScore)}</div>
+        <h3>Score Audit</h3>
+        <p class="muted">Latest score changes for this round.</p>
+        <div class="audit-table">
+          <div class="audit-table-row audit-table-head">
+            <div>Time</div>
+            <div>Entry</div>
+            <div>Hole</div>
+            <div>Old</div>
+            <div>New</div>
+            <div>Updated By</div>
           </div>
-        `).join('')}
+          ${items.map(item => `
+            <div class="audit-table-row">
+              <div>${escapeHtml(item.timestamp || '')}</div>
+              <div><strong>${escapeHtml(item.entryName || 'Team/Player')}</strong></div>
+              <div>${escapeHtml(String(item.hole || ''))}</div>
+              <div>${formatAuditScore(item.oldScore)}</div>
+              <div>${formatAuditScore(item.newScore)}</div>
+              <div>${escapeHtml(item.updatedBy || '')}</div>
+            </div>
+          `).join('')}
+        </div>
       </div>
     `;
   }
