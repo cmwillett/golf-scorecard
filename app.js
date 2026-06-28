@@ -1,7 +1,7 @@
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbw1lDOVpkmxmHbg71TQycQw4ZZBfxpNBuv5UDGK_vQ6-kiGco2XIMYjfye6WGBMdu7r2w/exec';
 const FRONTEND_APP_URL = 'https://cmwillett.github.io/golf-scorecard/';
-const FRONTEND_VERSION = '0.2.4';
+const FRONTEND_VERSION = '0.2.5';
 
 function apiCall(action, args = []) {
   if (!API_URL || API_URL.includes('PASTE_APPS_SCRIPT')) {
@@ -1353,42 +1353,34 @@ createGoogleScriptRunShim();
 
   function getRoundShareMessage(round) {
     const name = round?.roundName || 'Golf Round';
-    const code = round?.joinCode || '';
     const joinUrl = getJoinUrl(round);
     return `🏌️ ${name}
 
 Join our live golf round!
 
-Join Link:
 ${joinUrl}
 
-Join Code:
-${code}
+Open the link and choose your team.
 
-Open the link and the join code will be filled in automatically. Tap "Install App" if you see it. If you do not see Install App, use your browser menu and choose Install app or Add to Home screen.`;
+If prompted, tap "Install App". Otherwise, use your browser menu and choose Install App or Add to Home Screen.`;
   }
 
   function getEntryShareMessage(round, entry) {
     const name = round?.roundName || 'Golf Round';
-    const code = round?.joinCode || '';
     const joinUrl = getJoinUrl(round);
     const entryName = entry?.entryName || 'Your Team';
     const pin = entry?.scoringPin || '';
     return `🏌️ ${name}
 
-You're scoring for:
-${entryName}
+Team: ${entryName}
 
-Join Link:
 ${joinUrl}
 
-Join Code:
-${code}
+Team PIN: ${pin}
 
-Team PIN:
-${pin}
+Open the link, choose ${entryName}, and enter your Team PIN.
 
-Open the link, choose your team, and enter your Team PIN. Tap "Install App" if you see it. If you do not see Install App, use your browser menu and choose Install app or Add to Home screen.`;
+If prompted, tap "Install App". Otherwise, use your browser menu and choose Install App or Add to Home Screen.`;
   }
 
   function isProbablyMobileDevice() {
