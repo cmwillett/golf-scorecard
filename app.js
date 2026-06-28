@@ -1,7 +1,7 @@
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbw1lDOVpkmxmHbg71TQycQw4ZZBfxpNBuv5UDGK_vQ6-kiGco2XIMYjfye6WGBMdu7r2w/exec';
 const FRONTEND_APP_URL = 'https://cmwillett.github.io/golf-scorecard/';
-const FRONTEND_VERSION = '0.2.5';
+const FRONTEND_VERSION = '0.2.6';
 
 function apiCall(action, args = []) {
   if (!API_URL || API_URL.includes('PASTE_APPS_SCRIPT')) {
@@ -1077,6 +1077,7 @@ createGoogleScriptRunShim();
           <button class="small secondary share-inline" onclick="adminViewLeaderboard()">View Leaderboard</button>
           <button class="small secondary share-inline" onclick="shareAdminRoundJoin()">Share Join Code</button>
           <button class="small secondary share-inline" onclick="shareAdminResults()">Share Results</button>
+          <button class="small secondary share-inline" onclick="adminViewScoreAudit()">Recent Edits</button>
         </div>
         <div class="admin-actions">
           ${isActive
@@ -1100,6 +1101,7 @@ createGoogleScriptRunShim();
           </div>
         </div>
       `).join('')}
+      <div id="adminAuditContent"></div>
     `;
   }
 
@@ -1115,6 +1117,64 @@ createGoogleScriptRunShim();
     selectedEntryName = '';
     selectedEntryPin = '';
     showLeaderboard();
+  }
+
+  function adminViewScoreAudit() {
+    if (!lastAdminRound) {
+      showModal('Choose a round first.');
+      return;
+    }
+
+    const container = document.getElementById('adminAuditContent');
+    if (container) container.innerHTML = '<div class="muted">Loading recent score edits...</div>';
+
+    google.script.run
+      .withSuccessHandler(items => {
+        renderAdminScoreAudit(items || []);
+      })
+      .withFailureHandler(err => showModal(err.message || err, 'Could Not Load Edits'))
+      .getScoreAudit(lastAdminRound.roundId, adminPinValue, 50);
+  }
+
+  function renderAdminScoreAudit(items) {
+    let container = document.getElementById('adminAuditContent');
+    if (!container) {
+      const adminContent = document.getElementById('adminContent');
+      if (!adminContent) return;
+      adminContent.insertAdjacentHTML('beforeend', '<div id="adminAuditContent"></div>');
+      container = document.getElementById('adminAuditContent');
+    }
+
+    if (!items.length) {
+      container.innerHTML = `
+        <div class="card audit-card">
+          <h3>Recent Score Edits</h3>
+          <p class="muted">No score edits have been recorded for this round yet.</p>
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = `
+      <div class="card audit-card">
+        <h3>Recent Score Edits</h3>
+        <p class="muted">Shows the latest score changes for this round.</p>
+        ${items.map(item => `
+          <div class="audit-row">
+            <div>
+              <strong>${escapeHtml(item.entryName || 'Team/Player')}</strong>
+              <div class="entry-sub">Hole ${escapeHtml(String(item.hole))} • ${escapeHtml(item.timestamp || '')}</div>
+            </div>
+            <div class="audit-change">${formatAuditScore(item.oldScore)} → ${formatAuditScore(item.newScore)}</div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }
+
+  function formatAuditScore(value) {
+    if (value === '' || value === null || typeof value === 'undefined') return 'blank';
+    return escapeHtml(String(value));
   }
 
   function adminScoreAsEntry(entryId) {

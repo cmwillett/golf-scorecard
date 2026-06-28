@@ -748,3 +748,27 @@
       gap: 8px;
     }
   }
+
+
+.audit-card {
+  margin-top: 16px;
+}
+
+.audit-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+}
+
+.audit-row:first-of-type {
+  border-top: 0;
+}
+
+.audit-change {
+  white-space: nowrap;
+  font-weight: 800;
+  color: var(--green-dark);
+}
