@@ -823,3 +823,11 @@
     display: none;
   }
 }
+
+.joined-status {
+  margin-top: 6px;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+.joined-status.joined { color: #166534; }
+.joined-status.not-joined { color: #9a3412; }

@@ -1,7 +1,7 @@
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbw1lDOVpkmxmHbg71TQycQw4ZZBfxpNBuv5UDGK_vQ6-kiGco2XIMYjfye6WGBMdu7r2w/exec';
 const FRONTEND_APP_URL = 'https://cmwillett.github.io/golf-scorecard/';
-const FRONTEND_VERSION = '0.2.7';
+const FRONTEND_VERSION = '0.2.8';
 
 function apiCall(action, args = []) {
   if (!API_URL || API_URL.includes('PASTE_APPS_SCRIPT')) {
@@ -107,6 +107,16 @@ createGoogleScriptRunShim();
 
   const SCORING_SESSION_KEY = 'golfScorecardScoringSessionV1';
   const APP_STATE_KEY = 'golfScorecardLastStateV1';
+  const DEVICE_ID_KEY = 'golfScorecardDeviceIdV1';
+
+  function getDeviceId() {
+    let deviceId = localStorage.getItem(DEVICE_ID_KEY);
+    if (!deviceId) {
+      deviceId = 'device-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+      localStorage.setItem(DEVICE_ID_KEY, deviceId);
+    }
+    return deviceId;
+  }
 
   document.addEventListener('DOMContentLoaded', () => {
     updateDisplayedVersion();
@@ -448,7 +458,8 @@ createGoogleScriptRunShim();
       .verifyEntryPin({
         joinCode: session.joinCode,
         entryId: session.entryId,
-        pin: session.scoringPin
+        pin: session.scoringPin,
+        deviceId: getDeviceId()
       });
   }
 
@@ -510,7 +521,8 @@ createGoogleScriptRunShim();
       .verifyEntryPin({
         joinCode: session.joinCode,
         entryId: session.entryId,
-        pin: session.scoringPin
+        pin: session.scoringPin,
+        deviceId: getDeviceId()
       });
   }
 
@@ -827,7 +839,8 @@ createGoogleScriptRunShim();
       .verifyEntryPin({
         joinCode: currentRound.joinCode,
         entryId: pendingEntryId,
-        pin
+        pin,
+        deviceId: getDeviceId()
       });
   }
 
@@ -909,7 +922,8 @@ createGoogleScriptRunShim();
         hole,
         score,
         scoringPin: selectedEntryPin,
-        updatedBy: selectedEntryName || entryId
+        updatedBy: selectedEntryName || entryId,
+        deviceId: getDeviceId()
       });
   }
 
@@ -1087,11 +1101,18 @@ createGoogleScriptRunShim();
         </div>
       </div>
       <h3>Team / Player PINs</h3>
-      ${(round.entries || []).map(entry => `
+      ${(round.entries || []).map(entry => {
+        const session = (round.teamSessions || []).find(item => item.entryId === entry.entryId);
+        const joinedText = session
+          ? `Joined • Last seen ${escapeHtml(session.lastSeen || session.joinedAt || '')}${session.deviceCount > 1 ? ` • ${session.deviceCount} devices` : ''}`
+          : 'Not joined yet';
+        const joinedClass = session ? 'joined-status joined' : 'joined-status not-joined';
+        return `
         <div class="pin-row">
           <div>
             <strong>${escapeHtml(entry.entryName)}</strong>
             <div class="entry-sub">${escapeHtml((entry.players || []).join(', '))}</div>
+            <div class="${joinedClass}">${joinedText}</div>
           </div>
           <div class="pin-actions">
             <div class="pin-code">${escapeHtml(entry.scoringPin || '')}</div>
@@ -1100,7 +1121,8 @@ createGoogleScriptRunShim();
             <button class="small secondary" onclick="adminResetPin('${entry.entryId}')">Reset PIN</button>
           </div>
         </div>
-      `).join('')}
+      `;
+      }).join('')}
       <div id="adminAuditContent"></div>
     `;
   }
