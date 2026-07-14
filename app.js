@@ -1,7 +1,7 @@
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbw1lDOVpkmxmHbg71TQycQw4ZZBfxpNBuv5UDGK_vQ6-kiGco2XIMYjfye6WGBMdu7r2w/exec';
 const FRONTEND_APP_URL = 'https://cmwillett.github.io/golf-scorecard/';
-const FRONTEND_VERSION = '0.2.9';
+const FRONTEND_VERSION = '0.2.10';
 
 function apiCall(action, args = []) {
   if (!API_URL || API_URL.includes('PASTE_APPS_SCRIPT')) {
@@ -1094,6 +1094,7 @@ createGoogleScriptRunShim();
           <button class="small secondary share-inline" onclick="adminViewLeaderboard()">View Leaderboard</button>
           <button class="small secondary share-inline" onclick="shareAdminRoundJoin()">Share Join Code</button>
           <button class="small secondary share-inline" onclick="shareAdminResults()">Share Results</button>
+          <button class="small secondary share-inline" onclick="refreshAdminRoundStatus(this)">Refresh Team Status</button>
         </div>
         <div class="admin-actions">
           ${isActive
@@ -1129,6 +1130,48 @@ createGoogleScriptRunShim();
     `;
   }
 
+
+
+  function refreshAdminRoundStatus(button) {
+    const select = document.getElementById('adminRoundSelect');
+    const roundId = (lastAdminRound && lastAdminRound.roundId) || (select ? select.value : '');
+
+    if (!roundId) {
+      showModal('Choose a round first.');
+      return;
+    }
+
+    const originalText = button ? button.textContent : '';
+    if (button) {
+      button.disabled = true;
+      button.textContent = 'Refreshing...';
+    }
+
+    google.script.run
+      .withSuccessHandler(round => {
+        if (button) {
+          button.disabled = false;
+          button.textContent = originalText || 'Refresh Team Status';
+        }
+
+        if (!round) {
+          showModal('That round could not be found.');
+          return;
+        }
+
+        lastAdminRound = round;
+        renderAdminRound(round);
+        adminViewScoreAudit(true);
+      })
+      .withFailureHandler(err => {
+        if (button) {
+          button.disabled = false;
+          button.textContent = originalText || 'Refresh Team Status';
+        }
+        showModal(err.message || err);
+      })
+      .getAdminRound(roundId, adminPinValue);
+  }
 
   function adminViewLeaderboard() {
     if (!lastAdminRound) {
