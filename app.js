@@ -1,7 +1,7 @@
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbw1lDOVpkmxmHbg71TQycQw4ZZBfxpNBuv5UDGK_vQ6-kiGco2XIMYjfye6WGBMdu7r2w/exec';
 const FRONTEND_APP_URL = 'https://cmwillett.github.io/golf-scorecard/';
-const FRONTEND_VERSION = '0.2.10';
+const FRONTEND_VERSION = '0.2.11';
 
 function apiCall(action, args = []) {
   if (!API_URL || API_URL.includes('PASTE_APPS_SCRIPT')) {
@@ -191,7 +191,7 @@ createGoogleScriptRunShim();
       ? 'For the best golf scoring experience, install this app on your device. It will open like a regular app and work better during the round.'
       : 'For the best golf scoring experience, install this app on your device. If the Install button does not appear, use your browser menu and choose “Install app” or “Add to Home screen.”';
 
-    showModal(message, 'Install Golf Scorecard');
+    showModal(message, 'Install Willett Scorecard');
     const okButton = document.getElementById('modalOkButton');
     if (okButton) {
       okButton.textContent = deferredInstallPrompt ? 'Install App' : 'Got it';

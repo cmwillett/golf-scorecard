@@ -1,6 +1,6 @@
 {
-  "name": "Golf Scorecard",
-  "short_name": "Golf Scores",
+  "name": "Willett Scorecard",
+  "short_name": "Willett Scorecard",
   "description": "Live golf outing and scramble scoring.",
   "start_url": "./",
   "scope": "./",
