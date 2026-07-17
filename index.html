@@ -28,6 +28,15 @@
           <p>Host an outing, join a team, or check the leaderboard.</p>
         </div>
 
+        <div id="installBanner" class="install-banner hidden" role="region" aria-label="Install Willett Scorecard">
+          <div class="install-banner-icon" aria-hidden="true">📱</div>
+          <div class="install-banner-copy">
+            <h3>Install Willett Scorecard</h3>
+            <p>Install before the round for the easiest scoring experience.</p>
+          </div>
+          <button id="installBannerButton" class="install-banner-button" onclick="installApp()">Install Now</button>
+        </div>
+
         <button id="installAppButton" class="secondary hidden" onclick="installApp()">Install App</button>
         <button id="resumeScoringButton" class="hidden" onclick="resumeSavedScoring()">Resume Scoring</button>
         <button onclick="showHostPin()">Host Round</button>

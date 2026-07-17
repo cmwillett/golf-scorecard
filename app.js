@@ -1,7 +1,7 @@
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbw1lDOVpkmxmHbg71TQycQw4ZZBfxpNBuv5UDGK_vQ6-kiGco2XIMYjfye6WGBMdu7r2w/exec';
 const FRONTEND_APP_URL = 'https://cmwillett.github.io/golf-scorecard/';
-const FRONTEND_VERSION = '0.2.11';
+const FRONTEND_VERSION = '0.2.12';
 
 function apiCall(action, args = []) {
   if (!API_URL || API_URL.includes('PASTE_APPS_SCRIPT')) {
@@ -152,28 +152,38 @@ createGoogleScriptRunShim();
       window.navigator.standalone === true;
   }
 
-  function wireInstallPrompt() {
+  function updateInstallUi() {
+    const installed = isPwaInstalledMode();
     const installButton = document.getElementById('installAppButton');
-    if (isPwaInstalledMode()) {
-      if (installButton) installButton.classList.add('hidden');
-      return;
-    }
+    const installBanner = document.getElementById('installBanner');
+    const installBannerButton = document.getElementById('installBannerButton');
 
-    if (installButton) installButton.classList.remove('hidden');
+    if (installButton) installButton.classList.toggle('hidden', installed);
+    if (installBanner) installBanner.classList.toggle('hidden', installed);
+    if (installBannerButton) {
+      installBannerButton.textContent = deferredInstallPrompt ? 'Install Now' : 'How to Install';
+    }
+  }
+
+  function wireInstallPrompt() {
+    updateInstallUi();
+    if (isPwaInstalledMode()) return;
 
     window.addEventListener('beforeinstallprompt', event => {
       event.preventDefault();
       deferredInstallPrompt = event;
-      if (installButton) installButton.classList.remove('hidden');
+      updateInstallUi();
       showInstallReminder();
     });
 
     window.addEventListener('appinstalled', () => {
       deferredInstallPrompt = null;
       installReminderShown = true;
-      if (installButton) installButton.classList.add('hidden');
-      showModal('The app was installed successfully.', 'Installed');
+      updateInstallUi();
+      showModal('Willett Scorecard was installed successfully.', 'Installed');
     });
+
+    window.matchMedia('(display-mode: standalone)').addEventListener?.('change', updateInstallUi);
   }
 
   function scheduleInstallReminder() {
@@ -214,20 +224,25 @@ createGoogleScriptRunShim();
 
   async function installApp() {
     if (isPwaInstalledMode()) {
-      showModal('The app is already installed.', 'Installed');
+      showModal('You are already using the installed Willett Scorecard app.', 'Already Installed');
       return;
     }
 
     if (!deferredInstallPrompt) {
-      showModal('Use your browser menu and choose “Add to Home screen” or “Install app.”', 'Install App');
+      const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
+      const instructions = isIos
+        ? 'On iPhone or iPad, open this page in Safari, tap the Share button, then choose “Add to Home Screen.”'
+        : 'Open your browser menu and choose “Install app” or “Add to Home screen.” In desktop Chrome, you can also use the install icon in the address bar.';
+      showModal(instructions, 'Install Willett Scorecard');
       return;
     }
 
     deferredInstallPrompt.prompt();
-    await deferredInstallPrompt.userChoice;
-    deferredInstallPrompt = null;
-    const installButton = document.getElementById('installAppButton');
-    if (installButton) installButton.classList.add('hidden');
+    const choice = await deferredInstallPrompt.userChoice;
+    if (choice && choice.outcome === 'accepted') {
+      deferredInstallPrompt = null;
+    }
+    updateInstallUi();
   }
 
 
