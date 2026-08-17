@@ -1,7 +1,7 @@
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbw1lDOVpkmxmHbg71TQycQw4ZZBfxpNBuv5UDGK_vQ6-kiGco2XIMYjfye6WGBMdu7r2w/exec';
 const FRONTEND_APP_URL = 'https://cmwillett.github.io/golf-scorecard/';
-const FRONTEND_VERSION = '0.2.12';
+const FRONTEND_VERSION = '0.3.0';
 
 function apiCall(action, args = []) {
   if (!API_URL || API_URL.includes('PASTE_APPS_SCRIPT')) {
@@ -104,6 +104,7 @@ createGoogleScriptRunShim();
   let lastAdminRound = null;
   let deferredInstallPrompt = null;
   let installReminderShown = false;
+  let scoringAsAdmin = false;
 
   const SCORING_SESSION_KEY = 'golfScorecardScoringSessionV1';
   const APP_STATE_KEY = 'golfScorecardLastStateV1';
@@ -611,6 +612,13 @@ createGoogleScriptRunShim();
           <option value="7">7 players</option>
           <option value="8">8 players</option>
         </select>
+
+        <label>Scoring Mode</label>
+        <select id="standardScoringMode" onchange="renderStandardPlayers()">
+          <option value="single_scorekeeper" selected>One scorekeeper for the group</option>
+          <option value="individual">Each player scores themselves</option>
+        </select>
+
         <div id="standardPlayersBox"></div>
       `;
       renderStandardPlayers();
@@ -645,15 +653,45 @@ createGoogleScriptRunShim();
   function renderStandardPlayers() {
     const count = Number(document.getElementById('standardCount').value);
     const box = document.getElementById('standardPlayersBox');
+    const scoringMode = document.getElementById('standardScoringMode')?.value || 'single_scorekeeper';
 
     let html = '';
     for (let i = 1; i <= count; i++) {
       html += `
         <label>Player ${i}</label>
-        <input class="standard-player" placeholder="Player ${i}">
+        <input class="standard-player" data-player-index="${i - 1}" placeholder="Player ${i}" oninput="updateScorekeeperOptions()">
       `;
     }
+
+    if (scoringMode === 'single_scorekeeper') {
+      html += `
+        <div class="setup-card">
+          <label>Scorekeeper</label>
+          <select id="scorekeeperIndex"></select>
+          <p class="muted">Only the scorekeeper needs a PIN. Everyone else can open the round and view the leaderboard without a PIN.</p>
+        </div>
+      `;
+    }
+
     box.innerHTML = html;
+    updateScorekeeperOptions();
+  }
+
+  function updateScorekeeperOptions() {
+    const select = document.getElementById('scorekeeperIndex');
+    if (!select) return;
+
+    const inputs = Array.from(document.querySelectorAll('.standard-player'));
+    const previousValue = select.value || '0';
+
+    select.innerHTML = inputs.map((input, index) => {
+      const name = input.value.trim() || `Player ${index + 1}`;
+      return `<option value="${index}">${escapeHtml(name)}</option>`;
+    }).join('');
+
+    if (inputs[Number(previousValue)]) {
+      select.value = previousValue;
+    }
   }
 
   function renderScrambleTeams() {
@@ -695,15 +733,24 @@ createGoogleScriptRunShim();
     };
 
     if (gameStyle === 'standard') {
-      payload.entries = Array.from(document.querySelectorAll('.standard-player'))
-        .map(input => input.value.trim())
-        .filter(Boolean)
-        .map(name => ({ name, players: [name] }));
+      const playerInputs = Array.from(document.querySelectorAll('.standard-player'));
+      const playerRows = playerInputs
+        .map((input, originalIndex) => ({ name: input.value.trim(), originalIndex }))
+        .filter(item => item.name);
+
+      payload.entries = playerRows.map(item => ({ name: item.name, players: [item.name] }));
+      payload.scoringMode = document.getElementById('standardScoringMode')?.value || 'single_scorekeeper';
 
       if (!payload.entries.length) {
         showModal('Enter at least one player.');
         resetCreateButton_(createButton);
         return;
+      }
+
+      if (payload.scoringMode === 'single_scorekeeper') {
+        const selectedOriginalIndex = Number(document.getElementById('scorekeeperIndex')?.value || 0);
+        const filteredIndex = playerRows.findIndex(item => item.originalIndex === selectedOriginalIndex);
+        payload.scorekeeperIndex = filteredIndex >= 0 ? filteredIndex : 0;
       }
     }
 
@@ -757,6 +804,28 @@ createGoogleScriptRunShim();
 
   function renderCreatedPinList(round) {
     const box = document.getElementById('createdPinList');
+
+    if (round.gameStyle === 'standard' && round.scoringMode === 'single_scorekeeper') {
+      const scorekeeper = (round.entries || []).find(entry => entry.entryId === round.scorekeeperEntryId);
+      box.innerHTML = `
+        <h3>Scorekeeper</h3>
+        ${scorekeeper ? `
+          <div class="pin-row">
+            <div>
+              <strong>${escapeHtml(scorekeeper.entryName)}</strong>
+              <div class="entry-sub">Designated scorekeeper for all players</div>
+            </div>
+            <div class="pin-actions">
+              <div class="pin-code">${escapeHtml(scorekeeper.scoringPin || '')}</div>
+              <button class="small secondary share-button" onclick="shareCurrentRoundEntry('${scorekeeper.entryId}')">Share</button>
+            </div>
+          </div>
+        ` : '<p class="muted">Scorekeeper information was not returned.</p>'}
+        <p class="muted">Everyone else can use the join link to view the live leaderboard without a PIN.</p>
+      `;
+      return;
+    }
+
     box.innerHTML = `
       <h3>Team / Player PINs</h3>
       ${(round.entries || []).map(entry => `
@@ -783,6 +852,7 @@ createGoogleScriptRunShim();
     const code = document.getElementById('joinCode').value.trim();
     loadRoundByCode(code, round => {
       currentRound = round;
+      scoringAsAdmin = false;
       renderTeamChoices();
       showView('chooseTeamView');
     });
@@ -814,6 +884,20 @@ createGoogleScriptRunShim();
 
   function renderTeamChoices() {
     const box = document.getElementById('teamChoices');
+
+    if (currentRound.gameStyle === 'standard' && currentRound.scoringMode === 'single_scorekeeper') {
+      const scorekeeper = (currentRound.entries || []).find(entry => entry.entryId === currentRound.scorekeeperEntryId);
+      box.innerHTML = `
+        <div class="card">
+          <h3>${escapeHtml(currentRound.roundName || 'Standard Round')}</h3>
+          <p class="muted">This round uses one designated scorekeeper${scorekeeper ? `: <strong>${escapeHtml(scorekeeper.entryName)}</strong>` : ''}.</p>
+          <button onclick="showLeaderboard()">View Live Leaderboard</button>
+          ${scorekeeper ? `<button class="secondary" onclick="selectEntryForPin('${scorekeeper.entryId}', '${escapeAttr(scorekeeper.entryName)}')">I’m the Scorekeeper</button>` : ''}
+        </div>
+      `;
+      return;
+    }
+
     box.innerHTML = currentRound.entries.map(entry => `
       <button class="choice-card" onclick="selectEntryForPin('${entry.entryId}', '${escapeAttr(entry.entryName)}')">
         <div class="choice-name">${escapeHtml(entry.entryName)}</div>
@@ -825,7 +909,8 @@ createGoogleScriptRunShim();
   function selectEntryForPin(entryId, entryName) {
     pendingEntryId = entryId;
     pendingEntryName = entryName;
-    document.getElementById('teamPinTitle').textContent = `${entryName} PIN`;
+    const isSingleScorekeeper = currentRound && currentRound.gameStyle === 'standard' && currentRound.scoringMode === 'single_scorekeeper';
+    document.getElementById('teamPinTitle').textContent = isSingleScorekeeper ? `${entryName} Scorekeeper PIN` : `${entryName} PIN`;
     document.getElementById('teamPin').value = '';
     showView('teamPinView');
   }
@@ -848,6 +933,7 @@ createGoogleScriptRunShim();
         selectedEntryId = result.entryId;
         selectedEntryName = result.entryName || pendingEntryName;
         selectedEntryPin = pin;
+        scoringAsAdmin = false;
         currentHole = 1;
         saveScoringSession();
         showScore();
@@ -872,36 +958,39 @@ createGoogleScriptRunShim();
   }
 
   function renderScoreHole() {
-    const entry = currentRound.entries.find(e => e.entryId === selectedEntryId);
-    if (!entry) {
+    const selectedEntry = currentRound.entries.find(e => e.entryId === selectedEntryId);
+    if (!selectedEntry) {
       showModal('Selected team/player not found.');
       showHome();
       return;
     }
 
     document.getElementById('holeTitle').textContent = `Hole ${currentHole}`;
-    const score = getScore(entry.entryId, currentHole);
-
     const locked = currentRound.status !== 'Active';
     const chipValues = [1,2,3,4,5,6,7,8,9,10];
+    const singleScorekeeper = currentRound.gameStyle === 'standard' && currentRound.scoringMode === 'single_scorekeeper';
+    const entriesToScore = singleScorekeeper ? currentRound.entries : [selectedEntry];
 
-    document.getElementById('scoreInputs').innerHTML = `
-      <div class="card score-card">
-        <div class="entry-name">${escapeHtml(entry.entryName)}</div>
-        <div class="entry-sub">${escapeHtml((entry.players || []).join(', '))}</div>
-        ${locked ? '<div class="lock-banner">Scoring is locked for this round.</div>' : ''}
-        <div class="score-control">
-          <button ${locked ? 'disabled' : ''} onclick="changeScore(-1)">−</button>
-          <div class="score-value">${score || '-'}</div>
-          <button ${locked ? 'disabled' : ''} onclick="changeScore(1)">+</button>
+    document.getElementById('scoreInputs').innerHTML = entriesToScore.map(entry => {
+      const score = getScore(entry.entryId, currentHole);
+      return `
+        <div class="card score-card">
+          <div class="entry-name">${escapeHtml(entry.entryName)}</div>
+          <div class="entry-sub">${singleScorekeeper ? 'Player score' : escapeHtml((entry.players || []).join(', '))}</div>
+          ${locked ? '<div class="lock-banner">Scoring is locked for this round.</div>' : ''}
+          <div class="score-control">
+            <button ${locked ? 'disabled' : ''} onclick="changeScoreForEntry('${entry.entryId}', -1)">−</button>
+            <div class="score-value">${score || '-'}</div>
+            <button ${locked ? 'disabled' : ''} onclick="changeScoreForEntry('${entry.entryId}', 1)">+</button>
+          </div>
+          <div class="score-chips">
+            ${chipValues.map(value => `
+              <button ${locked ? 'disabled' : ''} class="score-chip ${Number(score) === value ? 'selected' : ''}" onclick="setScoreForEntry('${entry.entryId}', ${value})">${value}</button>
+            `).join('')}
+          </div>
         </div>
-        <div class="score-chips">
-          ${chipValues.map(value => `
-            <button ${locked ? 'disabled' : ''} class="score-chip ${Number(score) === value ? 'selected' : ''}" onclick="setScore(${value})">${value}</button>
-          `).join('')}
-        </div>
-      </div>
-    `;
+      `;
+    }).join('');
   }
 
   function getScore(entryId, hole) {
@@ -909,15 +998,20 @@ createGoogleScriptRunShim();
   }
 
   function setScore(score) {
+    setScoreForEntry(selectedEntryId, score);
+  }
+
+  function setScoreForEntry(entryId, score) {
     if (currentRound.status !== 'Active') {
       showModal('Scoring is locked for this round.');
       return;
     }
-    if (!currentRound.scores[selectedEntryId]) currentRound.scores[selectedEntryId] = {};
 
-    const entryId = selectedEntryId;
+    if (!currentRound.scores[entryId]) currentRound.scores[entryId] = {};
+
     const hole = currentHole;
     const saveToken = ++scoreSaveToken;
+    const targetEntry = currentRound.entries.find(entry => entry.entryId === entryId);
 
     currentRound.scores[entryId][String(hole)] = score;
     renderScoreHole();
@@ -939,15 +1033,22 @@ createGoogleScriptRunShim();
         hole,
         score,
         scoringPin: selectedEntryPin,
-        updatedBy: selectedEntryName || entryId,
+        adminPin: scoringAsAdmin ? adminPinValue : '',
+        updatedBy: scoringAsAdmin
+          ? `Admin (${targetEntry?.entryName || entryId})`
+          : (selectedEntryName || entryId),
         deviceId: getDeviceId()
       });
   }
 
   function changeScore(delta) {
-    const current = Number(getScore(selectedEntryId, currentHole)) || 0;
+    changeScoreForEntry(selectedEntryId, delta);
+  }
+
+  function changeScoreForEntry(entryId, delta) {
+    const current = Number(getScore(entryId, currentHole)) || 0;
     const next = Math.max(1, current + delta);
-    setScore(next);
+    setScoreForEntry(entryId, next);
   }
 
   function previousHole() {
@@ -1105,6 +1206,9 @@ createGoogleScriptRunShim();
       <div class="card">
         <h3>${escapeHtml(round.roundName || 'Round')}</h3>
         <p class="muted">Code ${escapeHtml(round.joinCode)} • ${escapeHtml(round.gameStyle)} • ${round.holes} holes • ${escapeHtml(round.status)}</p>
+        ${round.gameStyle === 'standard' && round.scoringMode === 'single_scorekeeper'
+          ? `<p class="muted"><strong>Scoring Mode:</strong> Single Scorekeeper • <strong>Scorekeeper:</strong> ${escapeHtml(((round.entries || []).find(e => e.entryId === round.scorekeeperEntryId) || {}).entryName || 'Unknown')}</p>`
+          : ''}
         <div class="share-action-row">
           <button class="small secondary share-inline" onclick="adminViewLeaderboard()">View Leaderboard</button>
           <button class="small secondary share-inline" onclick="shareAdminRoundJoin()">Share Join Code</button>
@@ -1118,25 +1222,26 @@ createGoogleScriptRunShim();
           <button class="danger" onclick="adminDeleteRound()">Delete Round</button>
         </div>
       </div>
-      <h3>Team / Player PINs</h3>
+      <h3>${round.gameStyle === 'standard' && round.scoringMode === 'single_scorekeeper' ? 'Players / Scorekeeper' : 'Team / Player PINs'}</h3>
       ${(round.entries || []).map(entry => {
         const session = (round.teamSessions || []).find(item => item.entryId === entry.entryId);
+        const isScorekeeper = round.scoringMode === 'single_scorekeeper' && entry.entryId === round.scorekeeperEntryId;
         const joinedText = session
           ? `Joined • Last seen ${escapeHtml(session.lastSeen || session.joinedAt || '')}${session.deviceCount > 1 ? ` • ${session.deviceCount} devices` : ''}`
-          : 'Not joined yet';
+          : (round.scoringMode === 'single_scorekeeper' && !isScorekeeper ? 'Public viewer • No PIN required' : 'Not joined yet');
         const joinedClass = session ? 'joined-status joined' : 'joined-status not-joined';
         return `
         <div class="pin-row">
           <div>
-            <strong>${escapeHtml(entry.entryName)}</strong>
+            <strong>${escapeHtml(entry.entryName)}${isScorekeeper ? ' • Scorekeeper' : ''}</strong>
             <div class="entry-sub">${escapeHtml((entry.players || []).join(', '))}</div>
             <div class="${joinedClass}">${joinedText}</div>
           </div>
           <div class="pin-actions">
-            <div class="pin-code">${escapeHtml(entry.scoringPin || '')}</div>
+            ${isScorekeeper || round.scoringMode !== 'single_scorekeeper' ? `<div class="pin-code">${escapeHtml(entry.scoringPin || '')}</div>` : ''}
             <button class="small secondary" onclick="adminScoreAsEntry('${entry.entryId}')">Score</button>
-            <button class="small secondary share-button" onclick="shareAdminEntry('${entry.entryId}')">Share</button>
-            <button class="small secondary" onclick="adminResetPin('${entry.entryId}')">Reset PIN</button>
+            ${isScorekeeper || round.scoringMode !== 'single_scorekeeper' ? `<button class="small secondary share-button" onclick="shareAdminEntry('${entry.entryId}')">Share</button>
+            <button class="small secondary" onclick="adminResetPin('${entry.entryId}')">Reset PIN</button>` : ''}
           </div>
         </div>
       `;
@@ -1307,6 +1412,7 @@ createGoogleScriptRunShim();
     selectedEntryId = entry.entryId;
     selectedEntryName = entry.entryName;
     selectedEntryPin = entry.scoringPin || '';
+    scoringAsAdmin = true;
     currentHole = 1;
     saveLastAppState('scoreView');
     showScore();
