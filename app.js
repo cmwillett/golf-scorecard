@@ -1,7 +1,7 @@
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbw1lDOVpkmxmHbg71TQycQw4ZZBfxpNBuv5UDGK_vQ6-kiGco2XIMYjfye6WGBMdu7r2w/exec';
 const FRONTEND_APP_URL = 'https://cmwillett.github.io/golf-scorecard/';
-const FRONTEND_VERSION = '0.4.3';
+const FRONTEND_VERSION = '0.4.4';
 
 function apiCall(action, args = []) {
   if (!API_URL || API_URL.includes('PASTE_APPS_SCRIPT')) {
@@ -455,8 +455,11 @@ createGoogleScriptRunShim();
       .withSuccessHandler(result => {
         if (!result || !result.ok || !result.round) { showModal(result?.message || 'Could not open that round.'); return; }
         currentRound = result.round;
-        selectedEntryId = ''; selectedEntryName = ''; selectedEntryPin = ''; scoringAsAdmin = false; currentHole = 1;
-        saveLastRound(currentRound);
+        selectedEntryId = '';
+        selectedEntryName = '';
+        selectedEntryPin = '';
+        scoringAsAdmin = false;
+        currentHole = 1;
         renderTeamChoices();
         showView('chooseTeamView');
       })
@@ -475,7 +478,7 @@ createGoogleScriptRunShim();
 
   function updateRoundBadge() {
     const badge = document.getElementById('roundBadge');
-    if (!currentRound) {
+    if (!currentRound || currentRound.requireScoringPin === false) {
       badge.classList.add('hidden');
       return;
     }
