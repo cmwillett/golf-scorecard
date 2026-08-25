@@ -1,7 +1,7 @@
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbw1lDOVpkmxmHbg71TQycQw4ZZBfxpNBuv5UDGK_vQ6-kiGco2XIMYjfye6WGBMdu7r2w/exec';
 const FRONTEND_APP_URL = 'https://cmwillett.github.io/golf-scorecard/';
-const FRONTEND_VERSION = '0.4.6';
+const FRONTEND_VERSION = '0.4.7';
 
 function apiCall(action, args = []) {
   if (!API_URL || API_URL.includes('PASTE_APPS_SCRIPT')) {
@@ -1952,9 +1952,7 @@ If prompted, tap "Install App". Otherwise, use your browser menu and choose Inst
   }
 
   async function shareApp() {
-    const appUrl = (appSettings && appSettings.AppUrl)
-      ? String(appSettings.AppUrl).trim()
-      : 'https://cmwillett.github.io/golf-scorecard/';
+    const appUrl = String(FRONTEND_APP_URL || 'https://cmwillett.github.io/golf-scorecard/').trim();
 
     const text = `🏌️ Willett Scorecard
 
