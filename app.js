@@ -1,7 +1,7 @@
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbw1lDOVpkmxmHbg71TQycQw4ZZBfxpNBuv5UDGK_vQ6-kiGco2XIMYjfye6WGBMdu7r2w/exec';
 const FRONTEND_APP_URL = 'https://cmwillett.github.io/golf-scorecard/';
-const FRONTEND_VERSION = '0.4.1';
+const FRONTEND_VERSION = '0.4.2';
 
 function apiCall(action, args = []) {
   if (!API_URL || API_URL.includes('PASTE_APPS_SCRIPT')) {
@@ -428,6 +428,40 @@ createGoogleScriptRunShim();
   function showJoinRound() {
     stopLeaderboardAutoRefresh();
     showView('joinRoundView');
+    loadOpenRounds();
+  }
+
+  function loadOpenRounds() {
+    const section = document.getElementById('openRoundsSection');
+    const list = document.getElementById('openRoundsList');
+    if (!section || !list) return;
+    section.style.display = 'block';
+    list.innerHTML = '<p class="muted">Checking for open rounds...</p>';
+    google.script.run
+      .withSuccessHandler(rounds => {
+        rounds = Array.isArray(rounds) ? rounds : [];
+        if (!rounds.length) { section.style.display = 'none'; return; }
+        list.innerHTML = rounds.map(round => `
+          <button class="secondary" style="width:100%;margin-top:8px" onclick="joinOpenRound('${round.roundId}')">
+            ${escapeHtml(round.roundName || 'Open Round')}${round.gameStyle === 'bbb' ? ' • Bingo Bango Bongo' : ''}
+          </button>`).join('');
+      })
+      .withFailureHandler(() => { section.style.display = 'none'; })
+      .getOpenRounds();
+  }
+
+  function joinOpenRound(roundId) {
+    google.script.run
+      .withSuccessHandler(result => {
+        if (!result || !result.ok || !result.round) { showModal(result?.message || 'Could not open that round.'); return; }
+        currentRound = result.round;
+        selectedEntryId = ''; selectedEntryName = ''; selectedEntryPin = ''; scoringAsAdmin = false; currentHole = 1;
+        saveLastRound(currentRound);
+        renderTeamChoices();
+        showView('chooseTeamView');
+      })
+      .withFailureHandler(err => showModal(err.message || err))
+      .openRound(roundId);
   }
 
   function showLeaderboardLookup() {
@@ -548,7 +582,7 @@ createGoogleScriptRunShim();
     const button = evt?.target || document.getElementById('hostPinContinueButton');
 
     if (!pin) {
-      showModal('Enter the host PIN.', 'Host PIN Required');
+      showModal('Enter the host PIN.', 'Host PIN Protected');
       if (pinInput) pinInput.focus();
       return;
     }
@@ -827,8 +861,8 @@ createGoogleScriptRunShim();
     if (round.requireScoringPin === false) {
       box.innerHTML = `
         <div class="card">
-          <h3>Open Scoring</h3>
-          <p class="muted">No scoring PIN is required for this round. You can turn PIN protection on later from Admin.</p>
+          <h3>Open Round</h3>
+          <p class="muted">No join code or scoring PIN is required. Players can choose this round from the active open-round list. You can turn PIN protection on later from Admin.</p>
         </div>
       `;
       return;
@@ -1369,10 +1403,10 @@ createGoogleScriptRunShim();
           ? `<p class="muted"><strong>Scoring Mode:</strong> Single Scorekeeper • <strong>Scorekeeper:</strong> ${escapeHtml(((round.entries || []).find(e => e.entryId === round.scorekeeperEntryId) || {}).entryName || 'Unknown')}</p>`
           : ''}
         <div class="card" style="margin-top:12px">
-          <strong>Scoring Security</strong>
-          <p class="muted">${round.requireScoringPin === false ? 'Open Scoring — no PIN required' : 'PIN Required'}</p>
+          <strong>Round Access</strong>
+          <p class="muted">${round.requireScoringPin === false ? 'Open Round — no join code or scoring PIN required' : 'PIN Protected'}</p>
           <button class="small secondary" onclick="adminToggleScoringPinRequirement()">
-            ${round.requireScoringPin === false ? 'Turn PIN Protection On' : 'Turn PIN Protection Off'}
+            ${round.requireScoringPin === false ? 'Make PIN Protected' : 'Make Open Round'}
           </button>
         </div>
         <div class="share-action-row">
@@ -1588,8 +1622,8 @@ createGoogleScriptRunShim();
     if (!lastAdminRound) return;
     const newValue = lastAdminRound.requireScoringPin === false;
     const message = newValue
-      ? 'Turn PIN protection ON for this round? Scorers will need their assigned PIN the next time they join.'
-      : 'Turn PIN protection OFF for this round? Anyone with the round link will be able to enter scores.';
+      ? 'Make this round PIN Protected? Players will need the join code and scorers will need their assigned scoring PIN.'
+      : 'Make this an Open Round? It will appear in the active-round list and no join code or scoring PIN will be required.';
 
     showConfirmModal(message, () => {
       google.script.run
@@ -1597,7 +1631,7 @@ createGoogleScriptRunShim();
           lastAdminRound = round;
           if (currentRound && currentRound.roundId === round.roundId) currentRound = round;
           renderAdminRound(round);
-          showModal(newValue ? 'PIN protection is now ON.' : 'Scoring is now open with no PIN required.', 'Scoring Security');
+          showModal(newValue ? 'This round is now PIN Protected.' : 'This is now an Open Round. No join code or scoring PIN is required.', 'Round Access');
         })
         .withFailureHandler(err => showModal(err.message || err))
         .setRoundPinRequirement({

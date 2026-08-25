@@ -79,12 +79,12 @@
 
         <div id="hostFields"></div>
 
-        <label>Scoring Security</label>
+        <label>Round Access</label>
         <select id="requireScoringPin">
-          <option value="true" selected>Require scoring PINs</option>
-          <option value="false">Open scoring — no PIN required</option>
+          <option value="true" selected>PIN Protected — join code and scoring PINs required</option>
+          <option value="false">Open Round — no join code or scoring PIN required</option>
         </select>
-        <p class="muted">You can change this later from Admin for this round.</p>
+        <p class="muted">Open rounds appear in the active-round list. You can change this later from Admin.</p>
 
         <button onclick="createHostedRoundFromSetup(event)">Create Round</button>
       </section>
@@ -107,6 +107,12 @@
       <section id="joinRoundView" class="view hidden">
         <button class="link-button" onclick="showHome()">← Home</button>
         <h2>Join Round</h2>
+        <div id="openRoundsSection" class="card" style="display:none">
+          <h3>Open Rounds</h3>
+          <p class="muted">Choose an active open round. No join code is needed.</p>
+          <div id="openRoundsList"></div>
+        </div>
+        <p class="muted">For PIN-protected rounds, enter the Join Code from the host.</p>
         <label>Join Code</label>
         <input id="joinCode" inputmode="numeric" placeholder="6-digit code">
         <button onclick="loadRoundForJoin()">Find Round</button>
