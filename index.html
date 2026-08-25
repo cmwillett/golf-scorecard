@@ -91,13 +91,13 @@
 
       <section id="roundCreatedView" class="view hidden">
         <h2>Round Created</h2>
-        <div class="join-code-card">
+        <div class="join-code-card" id="createdJoinCodeCard">
           <div class="muted">Join Code</div>
           <div id="createdJoinCode" class="join-code"></div>
           <button class="small secondary share-inline" onclick="shareCurrentRoundJoin()">Share Join Code</button>
           <button class="small secondary share-inline" onclick="showCurrentRoundQr()">Show QR Code</button>
         </div>
-        <p class="muted">Share the join link with everyone. If scoring is PIN-protected, share the scoring PIN only with the designated scorekeeper or team.</p>
+        <p class="muted" id="createdJoinHelp">Share the join link with everyone. If scoring is PIN-protected, share the scoring PIN only with the designated scorekeeper or team.</p>
         <div id="createdPinList"></div>
         <button onclick="showJoinRoundWithCode()">Join This Round</button>
         <button class="secondary" onclick="showLeaderboard()">View Leaderboard</button>

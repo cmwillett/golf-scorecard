@@ -1,7 +1,7 @@
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbw1lDOVpkmxmHbg71TQycQw4ZZBfxpNBuv5UDGK_vQ6-kiGco2XIMYjfye6WGBMdu7r2w/exec';
 const FRONTEND_APP_URL = 'https://cmwillett.github.io/golf-scorecard/';
-const FRONTEND_VERSION = '0.4.2';
+const FRONTEND_VERSION = '0.4.3';
 
 function apiCall(action, args = []) {
   if (!API_URL || API_URL.includes('PASTE_APPS_SCRIPT')) {
@@ -838,7 +838,19 @@ createGoogleScriptRunShim();
         selectedEntryName = '';
         selectedEntryPin = '';
         currentHole = 1;
-        document.getElementById('createdJoinCode').textContent = round.joinCode;
+
+        const joinCard = document.getElementById('createdJoinCodeCard');
+        const joinHelp = document.getElementById('createdJoinHelp');
+
+        if (round.requireScoringPin === false) {
+          if (joinCard) joinCard.style.display = 'none';
+          if (joinHelp) joinHelp.textContent = 'Players can open Willett Scorecard, tap Join Round, and choose this round from the Open Rounds list.';
+        } else {
+          document.getElementById('createdJoinCode').textContent = round.joinCode;
+          if (joinCard) joinCard.style.display = '';
+          if (joinHelp) joinHelp.textContent = 'Share the join link with everyone. Share the scoring PIN only with the designated scorekeeper or team.';
+        }
+
         renderCreatedPinList(round);
         showView('roundCreatedView');
       })
@@ -907,6 +919,10 @@ createGoogleScriptRunShim();
   }
 
   function showJoinRoundWithCode() {
+    if (currentRound && currentRound.requireScoringPin === false) {
+      joinOpenRound(currentRound.roundId);
+      return;
+    }
     document.getElementById('joinCode').value = currentRound ? currentRound.joinCode : '';
     showJoinRound();
   }
