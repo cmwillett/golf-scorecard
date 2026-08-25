@@ -1,7 +1,7 @@
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbw1lDOVpkmxmHbg71TQycQw4ZZBfxpNBuv5UDGK_vQ6-kiGco2XIMYjfye6WGBMdu7r2w/exec';
 const FRONTEND_APP_URL = 'https://cmwillett.github.io/golf-scorecard/';
-const FRONTEND_VERSION = '0.4.0';
+const FRONTEND_VERSION = '0.4.1';
 
 function apiCall(action, args = []) {
   if (!API_URL || API_URL.includes('PASTE_APPS_SCRIPT')) {
@@ -747,6 +747,7 @@ createGoogleScriptRunShim();
       course: document.getElementById('course').value.trim(),
       holes: Number(document.getElementById('holes').value),
       gameStyle,
+      requireScoringPin: document.getElementById('requireScoringPin')?.value !== 'false',
       entries: []
     };
 
@@ -822,6 +823,16 @@ createGoogleScriptRunShim();
 
   function renderCreatedPinList(round) {
     const box = document.getElementById('createdPinList');
+
+    if (round.requireScoringPin === false) {
+      box.innerHTML = `
+        <div class="card">
+          <h3>Open Scoring</h3>
+          <p class="muted">No scoring PIN is required for this round. You can turn PIN protection on later from Admin.</p>
+        </div>
+      `;
+      return;
+    }
 
     if ((round.gameStyle === 'standard' || round.gameStyle === 'bbb') && round.scoringMode === 'single_scorekeeper') {
       const scorekeeper = (round.entries || []).find(entry => entry.entryId === round.scorekeeperEntryId);
@@ -927,10 +938,41 @@ createGoogleScriptRunShim();
   function selectEntryForPin(entryId, entryName) {
     pendingEntryId = entryId;
     pendingEntryName = entryName;
+
+    if (currentRound && currentRound.requireScoringPin === false) {
+      verifyOpenScoringEntry(entryId, entryName);
+      return;
+    }
+
     const isSingleScorekeeper = currentRound && (currentRound.gameStyle === 'standard' || currentRound.gameStyle === 'bbb') && currentRound.scoringMode === 'single_scorekeeper';
     document.getElementById('teamPinTitle').textContent = isSingleScorekeeper ? `${entryName} Scorekeeper PIN` : `${entryName} PIN`;
     document.getElementById('teamPin').value = '';
     showView('teamPinView');
+  }
+
+  function verifyOpenScoringEntry(entryId, entryName) {
+    google.script.run
+      .withSuccessHandler(result => {
+        if (!result || !result.ok) {
+          showModal(result?.message || 'Could not open scoring.');
+          return;
+        }
+        currentRound = result.round;
+        selectedEntryId = result.entryId;
+        selectedEntryName = result.entryName || entryName;
+        selectedEntryPin = '';
+        scoringAsAdmin = false;
+        currentHole = 1;
+        saveScoringSession();
+        showScore();
+      })
+      .withFailureHandler(err => showModal(err.message || err))
+      .verifyEntryPin({
+        joinCode: currentRound.joinCode,
+        entryId,
+        pin: '',
+        deviceId: getDeviceId()
+      });
   }
 
   function verifySelectedTeamPin() {
@@ -1021,19 +1063,20 @@ createGoogleScriptRunShim();
     const locked = currentRound.status !== 'Active';
     const pointMap = currentRound.bbbPoints?.[String(currentHole)] || {};
     const categories = [
-      ['Bingo', 'bingo'],
-      ['Bango', 'bango'],
-      ['Bongo', 'bongo']
+      ['Bingo', 'bingo', 'First player to get their ball on the green.'],
+      ['Bango', 'bango', 'Closest to the hole once everyone is on the green.'],
+      ['Bongo', 'bongo', 'First player to hole out.']
     ];
 
     document.getElementById('scoreInputs').innerHTML = `
       <div class="card">
         <div class="entry-name">Bingo Bango Bongo</div>
-        <div class="entry-sub">Award one point in each category for Hole ${currentHole}.</div>
+        <div class="entry-sub">3 points available per hole • 1 Bingo • 1 Bango • 1 Bongo</div>
         ${locked ? '<div class="lock-banner">Scoring is locked for this round.</div>' : ''}
-        ${categories.map(([label, key]) => `
+        ${categories.map(([label, key, description]) => `
           <div class="bbb-category" style="margin-top:16px">
             <strong>${label}</strong>
+            <div class="entry-sub">${description}</div>
             <div class="score-chips" style="margin-top:8px">
               ${currentRound.entries.map(entry => `
                 <button ${locked ? 'disabled' : ''}
@@ -1325,6 +1368,13 @@ createGoogleScriptRunShim();
         ${(round.gameStyle === 'standard' || round.gameStyle === 'bbb') && round.scoringMode === 'single_scorekeeper'
           ? `<p class="muted"><strong>Scoring Mode:</strong> Single Scorekeeper • <strong>Scorekeeper:</strong> ${escapeHtml(((round.entries || []).find(e => e.entryId === round.scorekeeperEntryId) || {}).entryName || 'Unknown')}</p>`
           : ''}
+        <div class="card" style="margin-top:12px">
+          <strong>Scoring Security</strong>
+          <p class="muted">${round.requireScoringPin === false ? 'Open Scoring — no PIN required' : 'PIN Required'}</p>
+          <button class="small secondary" onclick="adminToggleScoringPinRequirement()">
+            ${round.requireScoringPin === false ? 'Turn PIN Protection On' : 'Turn PIN Protection Off'}
+          </button>
+        </div>
         <div class="share-action-row">
           <button class="small secondary share-inline" onclick="adminViewLeaderboard()">View Leaderboard</button>
           <button class="small secondary share-inline" onclick="shareAdminRoundJoin()">Share Join Code</button>
@@ -1354,9 +1404,9 @@ createGoogleScriptRunShim();
             <div class="${joinedClass}">${joinedText}</div>
           </div>
           <div class="pin-actions">
-            ${isScorekeeper || round.scoringMode !== 'single_scorekeeper' ? `<div class="pin-code">${escapeHtml(entry.scoringPin || '')}</div>` : ''}
+            ${round.requireScoringPin !== false && (isScorekeeper || round.scoringMode !== 'single_scorekeeper') ? `<div class="pin-code">${escapeHtml(entry.scoringPin || '')}</div>` : ''}
             <button class="small secondary" onclick="adminScoreAsEntry('${entry.entryId}')">Score</button>
-            ${isScorekeeper || round.scoringMode !== 'single_scorekeeper' ? `<button class="small secondary share-button" onclick="shareAdminEntry('${entry.entryId}')">Share</button>
+            ${round.requireScoringPin !== false && (isScorekeeper || round.scoringMode !== 'single_scorekeeper') ? `<button class="small secondary share-button" onclick="shareAdminEntry('${entry.entryId}')">Share</button>
             <button class="small secondary" onclick="adminResetPin('${entry.entryId}')">Reset PIN</button>` : ''}
           </div>
         </div>
@@ -1532,6 +1582,30 @@ createGoogleScriptRunShim();
     currentHole = 1;
     saveLastAppState('scoreView');
     showScore();
+  }
+
+  function adminToggleScoringPinRequirement() {
+    if (!lastAdminRound) return;
+    const newValue = lastAdminRound.requireScoringPin === false;
+    const message = newValue
+      ? 'Turn PIN protection ON for this round? Scorers will need their assigned PIN the next time they join.'
+      : 'Turn PIN protection OFF for this round? Anyone with the round link will be able to enter scores.';
+
+    showConfirmModal(message, () => {
+      google.script.run
+        .withSuccessHandler(round => {
+          lastAdminRound = round;
+          if (currentRound && currentRound.roundId === round.roundId) currentRound = round;
+          renderAdminRound(round);
+          showModal(newValue ? 'PIN protection is now ON.' : 'Scoring is now open with no PIN required.', 'Scoring Security');
+        })
+        .withFailureHandler(err => showModal(err.message || err))
+        .setRoundPinRequirement({
+          adminPin: adminPinValue,
+          roundId: lastAdminRound.roundId,
+          requireScoringPin: newValue
+        });
+    }, 'Change Scoring Security');
   }
 
   function adminFinishRound() {

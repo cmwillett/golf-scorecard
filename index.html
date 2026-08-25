@@ -79,6 +79,13 @@
 
         <div id="hostFields"></div>
 
+        <label>Scoring Security</label>
+        <select id="requireScoringPin">
+          <option value="true" selected>Require scoring PINs</option>
+          <option value="false">Open scoring — no PIN required</option>
+        </select>
+        <p class="muted">You can change this later from Admin for this round.</p>
+
         <button onclick="createHostedRoundFromSetup(event)">Create Round</button>
       </section>
 
