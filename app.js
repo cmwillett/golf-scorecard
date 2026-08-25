@@ -1,7 +1,7 @@
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbw1lDOVpkmxmHbg71TQycQw4ZZBfxpNBuv5UDGK_vQ6-kiGco2XIMYjfye6WGBMdu7r2w/exec';
 const FRONTEND_APP_URL = 'https://cmwillett.github.io/golf-scorecard/';
-const FRONTEND_VERSION = '0.3.0';
+const FRONTEND_VERSION = '0.4.0';
 
 function apiCall(action, args = []) {
   if (!API_URL || API_URL.includes('PASTE_APPS_SCRIPT')) {
@@ -624,6 +624,24 @@ createGoogleScriptRunShim();
       renderStandardPlayers();
     }
 
+    if (gameStyle === 'bbb') {
+      box.innerHTML = `
+        <label>Number of Players</label>
+        <select id="standardCount" onchange="renderStandardPlayers()">
+          <option value="2">2 players</option>
+          <option value="3">3 players</option>
+          <option value="4" selected>4 players</option>
+          <option value="5">5 players</option>
+          <option value="6">6 players</option>
+          <option value="7">7 players</option>
+          <option value="8">8 players</option>
+        </select>
+        <input type="hidden" id="standardScoringMode" value="single_scorekeeper">
+        <div id="standardPlayersBox"></div>
+      `;
+      renderStandardPlayers();
+    }
+
     if (gameStyle === 'scramble') {
       box.innerHTML = `
         <label>Team Size</label>
@@ -732,14 +750,14 @@ createGoogleScriptRunShim();
       entries: []
     };
 
-    if (gameStyle === 'standard') {
+    if (gameStyle === 'standard' || gameStyle === 'bbb') {
       const playerInputs = Array.from(document.querySelectorAll('.standard-player'));
       const playerRows = playerInputs
         .map((input, originalIndex) => ({ name: input.value.trim(), originalIndex }))
         .filter(item => item.name);
 
       payload.entries = playerRows.map(item => ({ name: item.name, players: [item.name] }));
-      payload.scoringMode = document.getElementById('standardScoringMode')?.value || 'single_scorekeeper';
+      payload.scoringMode = gameStyle === 'bbb' ? 'single_scorekeeper' : (document.getElementById('standardScoringMode')?.value || 'single_scorekeeper');
 
       if (!payload.entries.length) {
         showModal('Enter at least one player.');
@@ -805,7 +823,7 @@ createGoogleScriptRunShim();
   function renderCreatedPinList(round) {
     const box = document.getElementById('createdPinList');
 
-    if (round.gameStyle === 'standard' && round.scoringMode === 'single_scorekeeper') {
+    if ((round.gameStyle === 'standard' || round.gameStyle === 'bbb') && round.scoringMode === 'single_scorekeeper') {
       const scorekeeper = (round.entries || []).find(entry => entry.entryId === round.scorekeeperEntryId);
       box.innerHTML = `
         <h3>Scorekeeper</h3>
@@ -885,7 +903,7 @@ createGoogleScriptRunShim();
   function renderTeamChoices() {
     const box = document.getElementById('teamChoices');
 
-    if (currentRound.gameStyle === 'standard' && currentRound.scoringMode === 'single_scorekeeper') {
+    if ((currentRound.gameStyle === 'standard' || currentRound.gameStyle === 'bbb') && currentRound.scoringMode === 'single_scorekeeper') {
       const scorekeeper = (currentRound.entries || []).find(entry => entry.entryId === currentRound.scorekeeperEntryId);
       box.innerHTML = `
         <div class="card">
@@ -909,7 +927,7 @@ createGoogleScriptRunShim();
   function selectEntryForPin(entryId, entryName) {
     pendingEntryId = entryId;
     pendingEntryName = entryName;
-    const isSingleScorekeeper = currentRound && currentRound.gameStyle === 'standard' && currentRound.scoringMode === 'single_scorekeeper';
+    const isSingleScorekeeper = currentRound && (currentRound.gameStyle === 'standard' || currentRound.gameStyle === 'bbb') && currentRound.scoringMode === 'single_scorekeeper';
     document.getElementById('teamPinTitle').textContent = isSingleScorekeeper ? `${entryName} Scorekeeper PIN` : `${entryName} PIN`;
     document.getElementById('teamPin').value = '';
     showView('teamPinView');
@@ -965,10 +983,15 @@ createGoogleScriptRunShim();
       return;
     }
 
+    if (currentRound.gameStyle === 'bbb') {
+      renderBbbHole();
+      return;
+    }
+
     document.getElementById('holeTitle').textContent = `Hole ${currentHole}`;
     const locked = currentRound.status !== 'Active';
     const chipValues = [1,2,3,4,5,6,7,8,9,10];
-    const singleScorekeeper = currentRound.gameStyle === 'standard' && currentRound.scoringMode === 'single_scorekeeper';
+    const singleScorekeeper = (currentRound.gameStyle === 'standard' || currentRound.gameStyle === 'bbb') && currentRound.scoringMode === 'single_scorekeeper';
     const entriesToScore = singleScorekeeper ? currentRound.entries : [selectedEntry];
 
     document.getElementById('scoreInputs').innerHTML = entriesToScore.map(entry => {
@@ -991,6 +1014,70 @@ createGoogleScriptRunShim();
         </div>
       `;
     }).join('');
+  }
+
+  function renderBbbHole() {
+    document.getElementById('holeTitle').textContent = `Hole ${currentHole}`;
+    const locked = currentRound.status !== 'Active';
+    const pointMap = currentRound.bbbPoints?.[String(currentHole)] || {};
+    const categories = [
+      ['Bingo', 'bingo'],
+      ['Bango', 'bango'],
+      ['Bongo', 'bongo']
+    ];
+
+    document.getElementById('scoreInputs').innerHTML = `
+      <div class="card">
+        <div class="entry-name">Bingo Bango Bongo</div>
+        <div class="entry-sub">Award one point in each category for Hole ${currentHole}.</div>
+        ${locked ? '<div class="lock-banner">Scoring is locked for this round.</div>' : ''}
+        ${categories.map(([label, key]) => `
+          <div class="bbb-category" style="margin-top:16px">
+            <strong>${label}</strong>
+            <div class="score-chips" style="margin-top:8px">
+              ${currentRound.entries.map(entry => `
+                <button ${locked ? 'disabled' : ''}
+                  class="score-chip ${pointMap[key] === entry.entryId ? 'selected' : ''}"
+                  onclick="setBbbPoint('${key}', '${entry.entryId}')">
+                  ${escapeHtml(entry.entryName)}
+                </button>
+              `).join('')}
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }
+
+  function setBbbPoint(category, entryId) {
+    if (currentRound.status !== 'Active') {
+      showModal('Scoring is locked for this round.');
+      return;
+    }
+    if (!currentRound.bbbPoints) currentRound.bbbPoints = {};
+    if (!currentRound.bbbPoints[String(currentHole)]) currentRound.bbbPoints[String(currentHole)] = {};
+
+    const oldEntryId = currentRound.bbbPoints[String(currentHole)][category] || '';
+    currentRound.bbbPoints[String(currentHole)][category] = entryId;
+    renderBbbHole();
+
+    google.script.run
+      .withSuccessHandler(() => console.log('BBB point saved', { hole: currentHole, category, entryId }))
+      .withFailureHandler(err => {
+        currentRound.bbbPoints[String(currentHole)][category] = oldEntryId;
+        renderBbbHole();
+        showModal('Point save failed: ' + (err.message || err));
+      })
+      .updateBbbPoint({
+        roundId: currentRound.roundId,
+        hole: currentHole,
+        category,
+        entryId,
+        scoringPin: selectedEntryPin,
+        adminPin: scoringAsAdmin ? adminPinValue : '',
+        updatedBy: scoringAsAdmin ? 'Admin' : (selectedEntryName || selectedEntryId),
+        deviceId: getDeviceId()
+      });
   }
 
   function getScore(entryId, hole) {
@@ -1083,6 +1170,35 @@ createGoogleScriptRunShim();
   function renderLeaderboard() {
     const meta = document.getElementById('leaderboardMeta');
     meta.textContent = `${currentRound.roundName || 'Round'} • Code ${currentRound.joinCode} • ${currentRound.status}`;
+
+    if (currentRound.gameStyle === 'bbb') {
+      const rows = currentRound.entries.map(entry => {
+        let points = 0;
+        let through = 0;
+        for (let hole = 1; hole <= Number(currentRound.holes); hole++) {
+          const awards = currentRound.bbbPoints?.[String(hole)] || {};
+          const completed = ['bingo','bango','bongo'].every(key => awards[key]);
+          if (completed) through = hole;
+          ['bingo','bango','bongo'].forEach(key => {
+            if (awards[key] === entry.entryId) points++;
+          });
+        }
+        return { entry, points, through };
+      }).sort((a, b) => b.points - a.points);
+
+      document.getElementById('leaderboard').innerHTML = rows.map((row, index) => `
+        <div class="card">
+          <div class="leader-row">
+            <div>
+              <div class="leader-rank">${index + 1}. <span class="leader-name">${escapeHtml(row.entry.entryName)}</span></div>
+              <div class="entry-sub">Through ${row.through}</div>
+            </div>
+            <div class="leader-score">${row.points} pts</div>
+          </div>
+        </div>
+      `).join('');
+      return;
+    }
 
     const rows = currentRound.entries.map(entry => {
       const scoreMap = currentRound.scores[entry.entryId] || {};
@@ -1206,7 +1322,7 @@ createGoogleScriptRunShim();
       <div class="card">
         <h3>${escapeHtml(round.roundName || 'Round')}</h3>
         <p class="muted">Code ${escapeHtml(round.joinCode)} • ${escapeHtml(round.gameStyle)} • ${round.holes} holes • ${escapeHtml(round.status)}</p>
-        ${round.gameStyle === 'standard' && round.scoringMode === 'single_scorekeeper'
+        ${(round.gameStyle === 'standard' || round.gameStyle === 'bbb') && round.scoringMode === 'single_scorekeeper'
           ? `<p class="muted"><strong>Scoring Mode:</strong> Single Scorekeeper • <strong>Scorekeeper:</strong> ${escapeHtml(((round.entries || []).find(e => e.entryId === round.scorekeeperEntryId) || {}).entryName || 'Unknown')}</p>`
           : ''}
         <div class="share-action-row">
@@ -1222,7 +1338,7 @@ createGoogleScriptRunShim();
           <button class="danger" onclick="adminDeleteRound()">Delete Round</button>
         </div>
       </div>
-      <h3>${round.gameStyle === 'standard' && round.scoringMode === 'single_scorekeeper' ? 'Players / Scorekeeper' : 'Team / Player PINs'}</h3>
+      <h3>${(round.gameStyle === 'standard' || round.gameStyle === 'bbb') && round.scoringMode === 'single_scorekeeper' ? 'Players / Scorekeeper' : 'Team / Player PINs'}</h3>
       ${(round.entries || []).map(entry => {
         const session = (round.teamSessions || []).find(item => item.entryId === entry.entryId);
         const isScorekeeper = round.scoringMode === 'single_scorekeeper' && entry.entryId === round.scorekeeperEntryId;
