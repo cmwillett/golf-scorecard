@@ -1,7 +1,7 @@
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbw1lDOVpkmxmHbg71TQycQw4ZZBfxpNBuv5UDGK_vQ6-kiGco2XIMYjfye6WGBMdu7r2w/exec';
 const FRONTEND_APP_URL = 'https://cmwillett.github.io/golf-scorecard/';
-const FRONTEND_VERSION = '0.4.5';
+const FRONTEND_VERSION = '0.4.6';
 
 function apiCall(action, args = []) {
   if (!API_URL || API_URL.includes('PASTE_APPS_SCRIPT')) {
@@ -1964,7 +1964,65 @@ ${appUrl}
 
 Use it to join golf rounds, enter scores, and follow live leaderboards.`;
 
-    await shareText('Willett Scorecard', text);
+    const isLikelyDesktop = !/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+    if (isLikelyDesktop) {
+      const copied = await copyTextToClipboard(text);
+      if (copied) {
+        showModal('Willett Scorecard link copied to your clipboard.', 'Copied');
+      } else {
+        showModal(`Copy this link:\n\n${appUrl}`, 'Share App');
+      }
+      return;
+    }
+
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: 'Willett Scorecard',
+          text
+        });
+        return;
+      }
+    } catch (err) {
+      if (err && err.name === 'AbortError') return;
+    }
+
+    const copied = await copyTextToClipboard(text);
+    if (copied) {
+      showModal('Willett Scorecard link copied to your clipboard.', 'Copied');
+    } else {
+      showModal(`Copy this link:\n\n${appUrl}`, 'Share App');
+    }
+  }
+
+  async function copyTextToClipboard(text) {
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch (err) {
+      console.warn('Clipboard API failed:', err);
+    }
+
+    try {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.setAttribute('readonly', '');
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      textarea.style.pointerEvents = 'none';
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(textarea);
+      return ok;
+    } catch (err) {
+      console.warn('Fallback copy failed:', err);
+      return false;
+    }
   }
 
   async function shareText(title, text) {
