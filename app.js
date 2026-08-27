@@ -1,7 +1,7 @@
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbw1lDOVpkmxmHbg71TQycQw4ZZBfxpNBuv5UDGK_vQ6-kiGco2XIMYjfye6WGBMdu7r2w/exec';
 const FRONTEND_APP_URL = 'https://cmwillett.github.io/golf-scorecard/';
-const FRONTEND_VERSION = '0.4.8';
+const FRONTEND_VERSION = '0.5.0';
 
 function apiCall(action, args = []) {
   if (!API_URL || API_URL.includes('PASTE_APPS_SCRIPT')) {
@@ -443,7 +443,7 @@ createGoogleScriptRunShim();
         if (!rounds.length) { section.style.display = 'none'; return; }
         list.innerHTML = rounds.map(round => `
           <button class="secondary" style="width:100%;margin-top:8px" onclick="joinOpenRound('${round.roundId}')">
-            ${escapeHtml(round.roundName || 'Open Round')}${round.gameStyle === 'bbb' ? ' • Bingo Bango Bongo' : ''}
+            ${escapeHtml(round.roundName || 'Open Round')}${round.gameStyle === 'bbb' ? ' • Bingo Bango Bongo' : (round.gameStyle === 'sixes' ? ' • Sixes' : '')}
           </button>`).join('');
       })
       .withFailureHandler(() => { section.style.display = 'none'; })
@@ -637,6 +637,8 @@ createGoogleScriptRunShim();
     if (!gameStyleEl || !box) return;
 
     const gameStyle = gameStyleEl.value;
+    const holesSelect = document.getElementById('holes');
+    if (holesSelect) holesSelect.disabled = gameStyle === 'sixes';
     if (gameStyle === 'standard') {
       box.innerHTML = `
         <label>Number of Players</label>
@@ -673,6 +675,28 @@ createGoogleScriptRunShim();
           <option value="7">7 players</option>
           <option value="8">8 players</option>
         </select>
+        <input type="hidden" id="standardScoringMode" value="single_scorekeeper">
+        <div id="standardPlayersBox"></div>
+      `;
+      renderStandardPlayers();
+    }
+
+    if (gameStyle === 'sixes') {
+      const holesSelect = document.getElementById('holes');
+      if (holesSelect) holesSelect.value = '18';
+      box.innerHTML = `
+        <div class="setup-card">
+          <strong>Sixes</strong>
+          <p class="muted">4 players • partnerships rotate every 6 holes • each player on the winning team earns 1 point (0.5 each for a tied match).</p>
+        </div>
+
+        <label>Sixes Scoring</label>
+        <select id="sixesScoring">
+          <option value="scramble" selected>Scramble — one team score per hole</option>
+          <option value="combined">Combined Strokes — both player scores count</option>
+        </select>
+
+        <input type="hidden" id="standardCount" value="4">
         <input type="hidden" id="standardScoringMode" value="single_scorekeeper">
         <div id="standardPlayersBox"></div>
       `;
@@ -788,14 +812,21 @@ createGoogleScriptRunShim();
       entries: []
     };
 
-    if (gameStyle === 'standard' || gameStyle === 'bbb') {
+    if (gameStyle === 'standard' || gameStyle === 'bbb' || gameStyle === 'sixes') {
       const playerInputs = Array.from(document.querySelectorAll('.standard-player'));
       const playerRows = playerInputs
         .map((input, originalIndex) => ({ name: input.value.trim(), originalIndex }))
         .filter(item => item.name);
 
       payload.entries = playerRows.map(item => ({ name: item.name, players: [item.name] }));
-      payload.scoringMode = gameStyle === 'bbb' ? 'single_scorekeeper' : (document.getElementById('standardScoringMode')?.value || 'single_scorekeeper');
+      payload.scoringMode = (gameStyle === 'bbb' || gameStyle === 'sixes') ? 'single_scorekeeper' : (document.getElementById('standardScoringMode')?.value || 'single_scorekeeper');
+      if (gameStyle === 'sixes') payload.sixesScoring = document.getElementById('sixesScoring')?.value || 'scramble';
+
+      if (gameStyle === 'sixes' && payload.entries.length !== 4) {
+        showModal('Sixes requires exactly 4 players.');
+        resetCreateButton_(createButton);
+        return;
+      }
 
       if (!payload.entries.length) {
         showModal('Enter at least one player.');
@@ -883,7 +914,7 @@ createGoogleScriptRunShim();
       return;
     }
 
-    if ((round.gameStyle === 'standard' || round.gameStyle === 'bbb') && round.scoringMode === 'single_scorekeeper') {
+    if ((round.gameStyle === 'standard' || round.gameStyle === 'bbb' || round.gameStyle === 'sixes') && round.scoringMode === 'single_scorekeeper') {
       const scorekeeper = (round.entries || []).find(entry => entry.entryId === round.scorekeeperEntryId);
       box.innerHTML = `
         <h3>Scorekeeper</h3>
@@ -967,7 +998,7 @@ createGoogleScriptRunShim();
   function renderTeamChoices() {
     const box = document.getElementById('teamChoices');
 
-    if ((currentRound.gameStyle === 'standard' || currentRound.gameStyle === 'bbb') && currentRound.scoringMode === 'single_scorekeeper') {
+    if ((currentRound.gameStyle === 'standard' || currentRound.gameStyle === 'bbb' || currentRound.gameStyle === 'sixes') && currentRound.scoringMode === 'single_scorekeeper') {
       const scorekeeper = (currentRound.entries || []).find(entry => entry.entryId === currentRound.scorekeeperEntryId);
       box.innerHTML = `
         <div class="card">
@@ -997,7 +1028,7 @@ createGoogleScriptRunShim();
       return;
     }
 
-    const isSingleScorekeeper = currentRound && (currentRound.gameStyle === 'standard' || currentRound.gameStyle === 'bbb') && currentRound.scoringMode === 'single_scorekeeper';
+    const isSingleScorekeeper = currentRound && (currentRound.gameStyle === 'standard' || currentRound.gameStyle === 'bbb' || currentRound.gameStyle === 'sixes') && currentRound.scoringMode === 'single_scorekeeper';
     document.getElementById('teamPinTitle').textContent = isSingleScorekeeper ? `${entryName} Scorekeeper PIN` : `${entryName} PIN`;
     document.getElementById('teamPin').value = '';
     showView('teamPinView');
@@ -1083,10 +1114,15 @@ createGoogleScriptRunShim();
       return;
     }
 
+    if (currentRound.gameStyle === 'sixes') {
+      renderSixesHole();
+      return;
+    }
+
     document.getElementById('holeTitle').textContent = `Hole ${currentHole}`;
     const locked = currentRound.status !== 'Active';
     const chipValues = [1,2,3,4,5,6,7,8,9,10];
-    const singleScorekeeper = (currentRound.gameStyle === 'standard' || currentRound.gameStyle === 'bbb') && currentRound.scoringMode === 'single_scorekeeper';
+    const singleScorekeeper = (currentRound.gameStyle === 'standard' || currentRound.gameStyle === 'bbb' || currentRound.gameStyle === 'sixes') && currentRound.scoringMode === 'single_scorekeeper';
     const entriesToScore = singleScorekeeper ? currentRound.entries : [selectedEntry];
 
     document.getElementById('scoreInputs').innerHTML = entriesToScore.map(entry => {
@@ -1109,6 +1145,150 @@ createGoogleScriptRunShim();
         </div>
       `;
     }).join('');
+  }
+
+  function getSixesPairings(segmentIndex) {
+    const e = currentRound.entries;
+    const sets = [
+      [[0,1],[2,3]],
+      [[0,2],[1,3]],
+      [[0,3],[1,2]]
+    ];
+    return sets[segmentIndex].map(pair => pair.map(i => e[i]));
+  }
+
+  function getSixesTeamKey(team) {
+    return team.map(e => e.entryId).sort().join('|');
+  }
+
+  function getSixesScore(teamKey, hole) {
+    return currentRound.sixesScores?.[teamKey]?.[String(hole)] || '';
+  }
+
+  function renderSixesHole() {
+    document.getElementById('holeTitle').textContent = `Hole ${currentHole}`;
+    const locked = currentRound.status !== 'Active';
+    const segmentIndex = Math.min(2, Math.floor((currentHole - 1) / 6));
+    const segmentStart = segmentIndex * 6 + 1;
+    const segmentEnd = segmentStart + 5;
+    const teams = getSixesPairings(segmentIndex);
+    const chipValues = [1,2,3,4,5,6,7,8,9,10];
+
+    let scoreHtml = '';
+    if (currentRound.sixesScoring === 'combined') {
+      scoreHtml = currentRound.entries.map(entry => {
+        const score = getScore(entry.entryId, currentHole);
+        return `
+          <div class="card score-card">
+            <div class="entry-name">${escapeHtml(entry.entryName)}</div>
+            <div class="entry-sub">Individual score • counts toward combined team total</div>
+            <div class="score-control">
+              <button ${locked ? 'disabled' : ''} onclick="changeScoreForEntry('${entry.entryId}', -1)">−</button>
+              <div class="score-value">${score || '-'}</div>
+              <button ${locked ? 'disabled' : ''} onclick="changeScoreForEntry('${entry.entryId}', 1)">+</button>
+            </div>
+            <div class="score-chips">
+              ${chipValues.map(value => `<button ${locked ? 'disabled' : ''} class="score-chip ${Number(score) === value ? 'selected' : ''}" onclick="setScoreForEntry('${entry.entryId}', ${value})">${value}</button>`).join('')}
+            </div>
+          </div>`;
+      }).join('');
+    } else {
+      scoreHtml = teams.map((team, index) => {
+        const key = getSixesTeamKey(team);
+        const score = getSixesScore(key, currentHole);
+        return `
+          <div class="card score-card">
+            <div class="entry-name">${escapeHtml(team.map(e => e.entryName).join(' + '))}</div>
+            <div class="entry-sub">Scramble team score</div>
+            <div class="score-control">
+              <button ${locked ? 'disabled' : ''} onclick="changeSixesScore('${key}', -1)">−</button>
+              <div class="score-value">${score || '-'}</div>
+              <button ${locked ? 'disabled' : ''} onclick="changeSixesScore('${key}', 1)">+</button>
+            </div>
+            <div class="score-chips">
+              ${chipValues.map(value => `<button ${locked ? 'disabled' : ''} class="score-chip ${Number(score) === value ? 'selected' : ''}" onclick="setSixesScore('${key}', ${value})">${value}</button>`).join('')}
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    document.getElementById('scoreInputs').innerHTML = `
+      <div class="card">
+        <div class="entry-name">Sixes • Holes ${segmentStart}–${segmentEnd}</div>
+        <div class="entry-sub">${currentRound.sixesScoring === 'combined' ? 'Combined Strokes' : 'Scramble'} • ${escapeHtml(teams[0].map(e => e.entryName).join(' + '))} vs ${escapeHtml(teams[1].map(e => e.entryName).join(' + '))}</div>
+        ${locked ? '<div class="lock-banner">Scoring is locked for this round.</div>' : ''}
+      </div>
+      ${scoreHtml}
+    `;
+  }
+
+  function setSixesScore(teamKey, score) {
+    if (currentRound.status !== 'Active') return showModal('Scoring is locked for this round.');
+    if (!currentRound.sixesScores) currentRound.sixesScores = {};
+    if (!currentRound.sixesScores[teamKey]) currentRound.sixesScores[teamKey] = {};
+    currentRound.sixesScores[teamKey][String(currentHole)] = score;
+    renderSixesHole();
+
+    google.script.run
+      .withFailureHandler(err => showModal('Score save failed: ' + (err.message || err)))
+      .updateSixesScore({
+        roundId: currentRound.roundId,
+        teamKey,
+        hole: currentHole,
+        score,
+        scoringPin: selectedEntryPin,
+        adminPin: scoringAsAdmin ? adminPinValue : '',
+        updatedBy: scoringAsAdmin ? 'Admin' : (selectedEntryName || selectedEntryId),
+        deviceId: getDeviceId()
+      });
+  }
+
+  function changeSixesScore(teamKey, delta) {
+    const current = Number(getSixesScore(teamKey, currentHole)) || 0;
+    setSixesScore(teamKey, Math.max(1, current + delta));
+  }
+
+  function calculateSixesStandings() {
+    const points = Object.fromEntries(currentRound.entries.map(e => [e.entryId, 0]));
+    const segments = [];
+
+    for (let s = 0; s < 3; s++) {
+      const teams = getSixesPairings(s);
+      const start = s * 6 + 1, end = start + 5;
+      const totals = [0, 0];
+      let complete = true;
+
+      for (let hole = start; hole <= end; hole++) {
+        if (currentRound.sixesScoring === 'combined') {
+          teams.forEach((team, ti) => {
+            team.forEach(player => {
+              const val = getScore(player.entryId, hole);
+              if (!val) complete = false;
+              totals[ti] += Number(val) || 0;
+            });
+          });
+        } else {
+          teams.forEach((team, ti) => {
+            const val = getSixesScore(getSixesTeamKey(team), hole);
+            if (!val) complete = false;
+            totals[ti] += Number(val) || 0;
+          });
+        }
+      }
+
+      let winner = -1;
+      if (complete) {
+        if (totals[0] < totals[1]) winner = 0;
+        else if (totals[1] < totals[0]) winner = 1;
+        if (winner === -1) {
+          currentRound.entries.forEach(e => points[e.entryId] += 0.5);
+        } else {
+          teams[winner].forEach(e => points[e.entryId] += 1);
+        }
+      }
+      segments.push({ teams, start, end, totals, complete, winner });
+    }
+    return { points, segments };
   }
 
   function renderBbbHole() {
@@ -1267,6 +1447,38 @@ createGoogleScriptRunShim();
     const meta = document.getElementById('leaderboardMeta');
     meta.textContent = `${currentRound.roundName || 'Round'} • Code ${currentRound.joinCode} • ${currentRound.status}`;
 
+    if (currentRound.gameStyle === 'sixes') {
+      const result = calculateSixesStandings();
+      const playerRows = currentRound.entries
+        .map(entry => ({ entry, points: result.points[entry.entryId] || 0 }))
+        .sort((a,b) => b.points - a.points);
+
+      const matchCards = result.segments.map(seg => {
+        const names0 = seg.teams[0].map(e => e.entryName).join(' + ');
+        const names1 = seg.teams[1].map(e => e.entryName).join(' + ');
+        let status = 'In progress';
+        if (seg.complete && seg.winner === -1) status = `Tie • ${seg.totals[0]}–${seg.totals[1]} • 0.5 pt each`;
+        else if (seg.complete) status = `${escapeHtml((seg.winner === 0 ? names0 : names1))} won • ${seg.totals[0]}–${seg.totals[1]}`;
+        return `<div class="card">
+          <strong>Holes ${seg.start}–${seg.end}</strong>
+          <div class="entry-sub">${escapeHtml(names0)} vs ${escapeHtml(names1)}</div>
+          <div class="entry-sub">${status}</div>
+        </div>`;
+      }).join('');
+
+      document.getElementById('leaderboard').innerHTML = `
+        <div class="card">
+          <div class="entry-name">Overall Sixes Points</div>
+          <div class="entry-sub">${currentRound.sixesScoring === 'combined' ? 'Combined Strokes' : 'Scramble'}</div>
+        </div>
+        ${playerRows.map((row,index) => `<div class="card"><div class="leader-row">
+          <div class="leader-rank">${index+1}. <span class="leader-name">${escapeHtml(row.entry.entryName)}</span></div>
+          <div class="leader-score">${row.points} pts</div>
+        </div></div>`).join('')}
+        ${matchCards}`;
+      return;
+    }
+
     if (currentRound.gameStyle === 'bbb') {
       const rows = currentRound.entries.map(entry => {
         let points = 0;
@@ -1418,7 +1630,7 @@ createGoogleScriptRunShim();
       <div class="card">
         <h3>${escapeHtml(round.roundName || 'Round')}</h3>
         <p class="muted">Code ${escapeHtml(round.joinCode)} • ${escapeHtml(round.gameStyle)} • ${round.holes} holes • ${escapeHtml(round.status)}</p>
-        ${(round.gameStyle === 'standard' || round.gameStyle === 'bbb') && round.scoringMode === 'single_scorekeeper'
+        ${(round.gameStyle === 'standard' || round.gameStyle === 'bbb' || round.gameStyle === 'sixes') && round.scoringMode === 'single_scorekeeper'
           ? `<p class="muted"><strong>Scoring Mode:</strong> Single Scorekeeper • <strong>Scorekeeper:</strong> ${escapeHtml(((round.entries || []).find(e => e.entryId === round.scorekeeperEntryId) || {}).entryName || 'Unknown')}</p>`
           : ''}
         <div class="card" style="margin-top:12px">
@@ -1441,7 +1653,7 @@ createGoogleScriptRunShim();
           <button class="danger" onclick="adminDeleteRound()">Delete Round</button>
         </div>
       </div>
-      <h3>${(round.gameStyle === 'standard' || round.gameStyle === 'bbb') && round.scoringMode === 'single_scorekeeper' ? 'Players / Scorekeeper' : 'Team / Player PINs'}</h3>
+      <h3>${(round.gameStyle === 'standard' || round.gameStyle === 'bbb' || round.gameStyle === 'sixes') && round.scoringMode === 'single_scorekeeper' ? 'Players / Scorekeeper' : 'Team / Player PINs'}</h3>
       ${(round.entries || []).map(entry => {
         const session = (round.teamSessions || []).find(item => item.entryId === entry.entryId);
         const isScorekeeper = round.scoringMode === 'single_scorekeeper' && entry.entryId === round.scorekeeperEntryId;

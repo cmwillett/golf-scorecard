@@ -1,4 +1,4 @@
-const CACHE_NAME = 'willett-scorecard-v0.4.8';
+const CACHE_NAME = 'willett-scorecard-v0.5.0';
 const APP_SHELL = [
   './',
   './index.html',
